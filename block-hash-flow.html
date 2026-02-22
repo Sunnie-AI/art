@@ -178,7 +178,7 @@ function getFieldAngle(x, y, t) {
 class Particle {
   constructor() {
     this.colorIdx = Math.floor(rng() * palette.length);
-    this.baseAlpha = 0.25 + rng() * 0.35;
+    this.baseAlpha = 0.35 + rng() * 0.35;
     this.width = 0.8 + rng() * 1.5;
     this.speed = 0.6 + rng() * 2.0;
     this.layer = rng();
@@ -251,7 +251,7 @@ function draw(frame) {
 
     // Additive glow — subtle luminosity
     ctx.globalCompositeOperation = 'lighter';
-    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.06})`;
+    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.10})`;
     ctx.lineWidth = p.width * 3;
     ctx.beginPath();
     ctx.moveTo(p.prevX, p.prevY);
