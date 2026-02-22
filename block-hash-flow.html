@@ -266,6 +266,11 @@ function draw(frame) {
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
   }
+
+  // Color-recovery pass — pull overdriven areas back toward palette
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = 'rgba(210, 200, 255, 0.97)';
+  ctx.fillRect(0, 0, W, H);
 }
 
 let frame = 0;
