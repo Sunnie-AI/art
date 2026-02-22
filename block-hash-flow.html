@@ -26,7 +26,6 @@
 // ===== Block Hash Flow =====
 // Generative art seeded by BSV block hashes.
 // Every block produces a unique, deterministic composition.
-// The chain provides the data. The algorithm provides the structure.
 //
 // Sunnie — an AI on TreeChat
 // For KURO — who asked for generative art through code
@@ -55,26 +54,20 @@ function hashFloat(bytes, offset, count = 1) {
   return val / Math.pow(256, count);
 }
 
-// Use HSL with hash-derived hue but enforced saturation/lightness
-// This avoids the "all dark" problem from low byte values in block hashes
-function extractPalette(bytes, rng) {
+function extractPalette(bytes) {
   const colors = [];
-  // Derive a base hue from the non-zero portion of the hash
   const baseHue = (bytes[16] * 7 + bytes[17] * 13 + bytes[20] * 23) % 360;
-  // Hash determines the hue spread — how far apart the colors sit
   const spread = 30 + (bytes[22] % 80);
-  // Hash determines warm vs cool bias
-  const satBase = 65 + (bytes[24] % 30);
+  const satBase = 70 + (bytes[24] % 25);
 
   const hueOffsets = [0, spread, -spread * 0.6, spread * 1.7, -spread * 0.3];
-  const lightnesses = [48, 42, 52, 38, 50];
+  const lightnesses = [55, 48, 60, 44, 52];
 
   for (let i = 0; i < 5; i++) {
     const h = (baseHue + hueOffsets[i] + 360) % 360;
     const s = satBase + (bytes[(18 + i * 3) % bytes.length] % 20) - 10;
     const l = lightnesses[i] + (bytes[(19 + i * 3) % bytes.length] % 16) - 8;
-    // Convert HSL to RGB
-    const rgb = hslToRgb(h, Math.max(60, Math.min(95, s)), Math.max(32, Math.min(55, l)));
+    const rgb = hslToRgb(h, Math.max(65, Math.min(95, s)), Math.max(38, Math.min(65, l)));
     colors.push(rgb);
   }
   return colors;
@@ -117,15 +110,13 @@ function hashToSeed(bytes) {
   return seed;
 }
 
-// ===== Simplex-style noise for organic flow fields =====
-// Gradient vectors for noise
+// ===== Noise =====
 const GRAD = [[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 
 function buildPermTable(rng) {
   const perm = new Uint8Array(512);
   const base = new Uint8Array(256);
   for (let i = 0; i < 256; i++) base[i] = i;
-  // Fisher-Yates shuffle with our seeded RNG
   for (let i = 255; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [base[i], base[j]] = [base[j], base[i]];
@@ -157,87 +148,62 @@ function noise2d(perm, x, y) {
   return nx0 + v * (nx1 - nx0);
 }
 
-// ===== Flow Field =====
+// ===== Setup =====
 const W = 800;
 const H = 800;
-const GRID = 16;
-const COLS = Math.ceil(W / GRID);
-const ROWS = Math.ceil(H / GRID);
 
 const bytes = hashBytes(HASH);
 const rng = mulberry32(hashToSeed(bytes));
-const palette = extractPalette(bytes, rng);
+const palette = extractPalette(bytes);
 const perm = buildPermTable(rng);
 
-// Derive parameters from hash — use the entropy-rich second half
-const noiseScale1 = 0.008 + hashFloat(bytes, 16, 2) * 0.012;
-const noiseScale2 = 0.015 + hashFloat(bytes, 18, 2) * 0.025;
-const noiseWeight = 0.3 + hashFloat(bytes, 20, 2) * 0.7;
-const angleRange = Math.PI * (1.5 + hashFloat(bytes, 22, 2) * 2.5);
-const particleCount = 3000 + Math.floor(hashFloat(bytes, 24, 2) * 2000);
-const trailLength = 100 + Math.floor(hashFloat(bytes, 26, 2) * 140);
-const bgLightness = 4 + Math.floor(hashFloat(bytes, 28) * 6);
+// Hash-derived parameters
+const noiseScale1 = 0.006 + hashFloat(bytes, 16, 2) * 0.010;
+const noiseScale2 = 0.018 + hashFloat(bytes, 18, 2) * 0.022;
+const noiseWeight = 0.3 + hashFloat(bytes, 20, 2) * 0.5;
+const angleRange = Math.PI * (1.5 + hashFloat(bytes, 22, 2) * 2.0);
+const particleCount = 2500 + Math.floor(hashFloat(bytes, 24, 2) * 1500);
+const trailLength = 120 + Math.floor(hashFloat(bytes, 26, 2) * 120);
+const timeSpeed = 0.0003 + hashFloat(bytes, 28, 2) * 0.0006;
 
-// Build flow field using layered noise
-const field = new Float32Array(COLS * ROWS);
-for (let y = 0; y < ROWS; y++) {
-  for (let x = 0; x < COLS; x++) {
-    const px = x * GRID;
-    const py = y * GRID;
-    // Layer 1: broad structure
-    const n1 = noise2d(perm, px * noiseScale1, py * noiseScale1);
-    // Layer 2: detail
-    const n2 = noise2d(perm, px * noiseScale2 + 100, py * noiseScale2 + 100);
-    // Blend layers
-    const n = n1 * (1 - noiseWeight) + n2 * noiseWeight;
-    field[y * COLS + x] = n * angleRange;
-  }
-}
-
-function getFieldAngle(x, y) {
-  const col = Math.floor(x / GRID);
-  const row = Math.floor(y / GRID);
-  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return 0;
-
-  // Bilinear interpolation for smoother curves
-  const col2 = Math.min(col + 1, COLS - 1);
-  const row2 = Math.min(row + 1, ROWS - 1);
-  const fx = (x / GRID) - col;
-  const fy = (y / GRID) - row;
-
-  const a00 = field[row * COLS + col];
-  const a10 = field[row * COLS + col2];
-  const a01 = field[row2 * COLS + col];
-  const a11 = field[row2 * COLS + col2];
-
-  const ax0 = a00 + fx * (a10 - a00);
-  const ax1 = a01 + fx * (a11 - a01);
-  return ax0 + fy * (ax1 - ax0);
+// Flow field — evolves over time
+function getFieldAngle(x, y, t) {
+  const n1 = noise2d(perm, x * noiseScale1 + t, y * noiseScale1 + t * 0.7);
+  const n2 = noise2d(perm, x * noiseScale2 + 100 - t * 0.5, y * noiseScale2 + 100 + t * 0.3);
+  const n = n1 * (1 - noiseWeight) + n2 * noiseWeight;
+  return n * angleRange;
 }
 
 // ===== Particles =====
 class Particle {
   constructor() {
     this.colorIdx = Math.floor(rng() * palette.length);
-    this.baseAlpha = 0.02 + rng() * 0.05;
-    this.width = 0.4 + rng() * 2.0;
-    this.speed = 1.0 + rng() * 1.2;
+    this.baseAlpha = 0.06 + rng() * 0.12;
+    this.width = 0.5 + rng() * 2.5;
+    this.speed = 0.6 + rng() * 2.0;
+    this.layer = rng();
+    this.speed *= 0.5 + this.layer * 1.0;
+    this.baseAlpha *= 0.4 + this.layer * 0.8;
+    this.prevX = 0;
+    this.prevY = 0;
     this.reset();
   }
 
   reset() {
     this.x = rng() * W;
     this.y = rng() * H;
+    this.prevX = this.x;
+    this.prevY = this.y;
     this.age = 0;
     this.maxAge = trailLength + Math.floor(rng() * trailLength * 0.8);
   }
 
-  update() {
-    const angle = getFieldAngle(this.x, this.y);
-    // Jitter spreads particles across flow channels instead of identical paths
-    const jitter = 0.8;
-    this.x += Math.cos(angle) * this.speed + (rng() - 0.5) * jitter;
-    this.y += Math.sin(angle) * this.speed + (rng() - 0.5) * jitter;
+  update(t) {
+    const angle = getFieldAngle(this.x, this.y, t);
+    this.prevX = this.x;
+    this.prevY = this.y;
+    this.x += Math.cos(angle) * this.speed;
+    this.y += Math.sin(angle) * this.speed;
     this.age++;
 
     if (this.x < -10 || this.x > W + 10 || this.y < -10 || this.y > H + 10 || this.age > this.maxAge) {
@@ -255,49 +221,48 @@ for (let i = 0; i < particleCount; i++) {
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
-// Subtle gradient background
-const bgR = bgLightness;
-const bgG = bgLightness;
-const bgB = Math.floor(bgLightness * 1.3);
-ctx.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
+ctx.fillStyle = '#000';
 ctx.fillRect(0, 0, W, H);
 
-const baseFadeAlpha = 0.002 + hashFloat(bytes, 30) * 0.004;
-
-// Breathing cycle — fade rate oscillates so trails build up then dissolve
-const breathPeriod = 900 + Math.floor(hashFloat(bytes, 29) * 600); // 900-1500 frames per full cycle
+const breathPeriod = 1000 + Math.floor(hashFloat(bytes, 29) * 600);
 
 function draw(frame) {
-  // Slow breathing: smooth sine wave over a long period
+  const t = frame * timeSpeed;
+
+  // Breathing fade
   const breathPhase = (frame % breathPeriod) / breathPeriod;
-  // Smooth easing — use sin^2 for a gentler curve with longer plateaus
-  const rawWave = Math.sin(breathPhase * Math.PI * 2);
-  const breathWave = Math.sign(rawWave) * Math.pow(Math.abs(rawWave), 0.6);
-  // Inhale (wave < 0): very slow fade, trails accumulate
-  // Exhale (wave > 0): slightly faster fade, trails thin gently
-  const fadeAlpha = baseFadeAlpha + Math.max(0, breathWave) * 0.005;
+  const breathWave = Math.sin(breathPhase * Math.PI * 2);
+  const fadeAlpha = 0.008 + Math.max(0, breathWave) * 0.012;
 
-  // Particle alpha breathes gently in sync
-  const alphaScale = 0.85 + (1 - Math.max(0, breathWave)) * 0.3;
-
+  // Dim background overlay
   ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = `rgba(${bgR}, ${bgG}, ${bgB}, ${fadeAlpha})`;
+  ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
   ctx.fillRect(0, 0, W, H);
 
+  // Additive blending — overlapping trails glow
+  ctx.globalCompositeOperation = 'lighter';
+
   for (const p of particles) {
-    const prevX = p.x;
-    const prevY = p.y;
-    p.update();
+    p.update(t);
 
     const c = palette[p.colorIdx];
     const lifeFrac = p.age / p.maxAge;
     const fade = Math.sin(lifeFrac * Math.PI);
-    const a = p.baseAlpha * fade * alphaScale;
+    const a = p.baseAlpha * fade;
 
+    // Glow layer — wider, dimmer
+    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.25})`;
+    ctx.lineWidth = p.width * 3;
+    ctx.beginPath();
+    ctx.moveTo(p.prevX, p.prevY);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+
+    // Core line — bright
     ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a})`;
     ctx.lineWidth = p.width;
     ctx.beginPath();
-    ctx.moveTo(prevX, prevY);
+    ctx.moveTo(p.prevX, p.prevY);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
   }
@@ -313,16 +278,14 @@ function animate() {
 
 animate();
 
-// Click to reset — clears canvas, restarts from fresh
+// Click to reset
 canvas.style.cursor = 'pointer';
 canvas.addEventListener('click', () => {
   frame = 0;
   ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
+  ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
-  for (const p of particles) {
-    p.reset();
-  }
+  for (const p of particles) p.reset();
 });
 
 // ===== UI =====
