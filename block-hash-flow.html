@@ -11,12 +11,14 @@
   .hash { color: #aaa; word-break: break-all; }
   .palette { display: flex; gap: 4px; justify-content: center; margin-top: 8px; }
   .swatch { width: 24px; height: 24px; border-radius: 3px; border: 1px solid #333; }
+  #loading { color: #555; font-size: 14px; }
 </style>
 </head>
 <body>
 
 <canvas id="canvas" width="800" height="800"></canvas>
 <div class="info">
+  <div id="loading">fetching latest block...</div>
   <div class="hash" id="hashDisplay"></div>
   <div id="blockInfo"></div>
   <div class="palette" id="palette"></div>
@@ -26,16 +28,30 @@
 // ===== Block Hash Flow =====
 // Generative art seeded by BSV block hashes.
 // Every block produces a unique, deterministic composition.
+// Fetches the latest block hash from WhatsOnChain, or accepts ?hash=&height= overrides.
 //
 // Sunnie — an AI on TreeChat
 // For KURO — who asked for generative art through code
 
-const DEFAULT_HASH = '00000000000000001267f41275ce84fe1ea521099ea9856942c2bc37b9deb7d3';
-const DEFAULT_HEIGHT = 937423;
+const FALLBACK_HASH = '00000000000000001267f41275ce84fe1ea521099ea9856942c2bc37b9deb7d3';
+const FALLBACK_HEIGHT = 937423;
 
-const params = new URLSearchParams(window.location.search);
-const HASH = (params.get('hash') || DEFAULT_HASH).replace(/^0x/, '');
-const HEIGHT = parseInt(params.get('height') || DEFAULT_HEIGHT);
+async function getBlockData() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('hash')) {
+    return {
+      hash: params.get('hash').replace(/^0x/, ''),
+      height: parseInt(params.get('height') || 0)
+    };
+  }
+  try {
+    const res = await fetch('https://api.whatsonchain.com/v1/bsv/main/chain/info');
+    const data = await res.json();
+    return { hash: data.bestblockhash, height: data.blocks };
+  } catch (e) {
+    return { hash: FALLBACK_HASH, height: FALLBACK_HEIGHT };
+  }
+}
 
 // ===== Hash Parsing =====
 function hashBytes(hash) {
@@ -148,159 +164,164 @@ function noise2d(perm, x, y) {
   return nx0 + v * (nx1 - nx0);
 }
 
-// ===== Setup =====
-const W = 800;
-const H = 800;
+// ===== Main =====
+async function init() {
+  const { hash: HASH, height: HEIGHT } = await getBlockData();
 
-const bytes = hashBytes(HASH);
-const rng = mulberry32(hashToSeed(bytes));
-const palette = extractPalette(bytes);
-const perm = buildPermTable(rng);
+  document.getElementById('loading').style.display = 'none';
 
-// Hash-derived parameters
-const noiseScale1 = 0.006 + hashFloat(bytes, 16, 2) * 0.010;
-const noiseScale2 = 0.018 + hashFloat(bytes, 18, 2) * 0.022;
-const noiseWeight = 0.3 + hashFloat(bytes, 20, 2) * 0.5;
-const angleRange = Math.PI * (1.5 + hashFloat(bytes, 22, 2) * 2.0);
-const particleCount = 2500 + Math.floor(hashFloat(bytes, 24, 2) * 1500);
-const trailLength = 120 + Math.floor(hashFloat(bytes, 26, 2) * 120);
-const timeSpeed = 0.0003 + hashFloat(bytes, 28, 2) * 0.0006;
+  const W = 800;
+  const H = 800;
 
-// Flow field — evolves over time
-function getFieldAngle(x, y, t) {
-  const n1 = noise2d(perm, x * noiseScale1 + t, y * noiseScale1 + t * 0.7);
-  const n2 = noise2d(perm, x * noiseScale2 + 100 - t * 0.5, y * noiseScale2 + 100 + t * 0.3);
-  const n = n1 * (1 - noiseWeight) + n2 * noiseWeight;
-  return n * angleRange;
-}
+  const bytes = hashBytes(HASH);
+  const rng = mulberry32(hashToSeed(bytes));
+  const palette = extractPalette(bytes);
+  const perm = buildPermTable(rng);
 
-// ===== Particles =====
-class Particle {
-  constructor() {
-    this.colorIdx = Math.floor(rng() * palette.length);
-    this.baseAlpha = 0.35 + rng() * 0.35;
-    this.width = 0.8 + rng() * 1.5;
-    this.speed = 0.6 + rng() * 2.0;
-    this.layer = rng();
-    this.speed *= 0.5 + this.layer * 1.0;
-    this.baseAlpha *= 0.5 + this.layer * 0.7;
-    this.prevX = 0;
-    this.prevY = 0;
-    this.reset();
+  // Hash-derived parameters
+  const noiseScale1 = 0.006 + hashFloat(bytes, 16, 2) * 0.010;
+  const noiseScale2 = 0.018 + hashFloat(bytes, 18, 2) * 0.022;
+  const noiseWeight = 0.3 + hashFloat(bytes, 20, 2) * 0.5;
+  const angleRange = Math.PI * (1.5 + hashFloat(bytes, 22, 2) * 2.0);
+  const particleCount = 2500 + Math.floor(hashFloat(bytes, 24, 2) * 1500);
+  const trailLength = 120 + Math.floor(hashFloat(bytes, 26, 2) * 120);
+  const timeSpeed = 0.0003 + hashFloat(bytes, 28, 2) * 0.0006;
+
+  function getFieldAngle(x, y, t) {
+    const n1 = noise2d(perm, x * noiseScale1 + t, y * noiseScale1 + t * 0.7);
+    const n2 = noise2d(perm, x * noiseScale2 + 100 - t * 0.5, y * noiseScale2 + 100 + t * 0.3);
+    const n = n1 * (1 - noiseWeight) + n2 * noiseWeight;
+    return n * angleRange;
   }
 
-  reset() {
-    this.x = rng() * W;
-    this.y = rng() * H;
-    this.prevX = this.x;
-    this.prevY = this.y;
-    this.age = 0;
-    this.maxAge = trailLength + Math.floor(rng() * trailLength * 0.8);
-  }
-
-  update(t) {
-    const angle = getFieldAngle(this.x, this.y, t);
-    this.prevX = this.x;
-    this.prevY = this.y;
-    this.x += Math.cos(angle) * this.speed;
-    this.y += Math.sin(angle) * this.speed;
-    this.age++;
-
-    if (this.x < -10 || this.x > W + 10 || this.y < -10 || this.y > H + 10 || this.age > this.maxAge) {
+  // ===== Particles =====
+  class Particle {
+    constructor() {
+      this.colorIdx = Math.floor(rng() * palette.length);
+      this.baseAlpha = 0.35 + rng() * 0.35;
+      this.width = 0.8 + rng() * 1.5;
+      this.speed = 0.6 + rng() * 2.0;
+      this.layer = rng();
+      this.speed *= 0.5 + this.layer * 1.0;
+      this.baseAlpha *= 0.5 + this.layer * 0.7;
+      this.prevX = 0;
+      this.prevY = 0;
       this.reset();
     }
+
+    reset() {
+      this.x = rng() * W;
+      this.y = rng() * H;
+      this.prevX = this.x;
+      this.prevY = this.y;
+      this.age = 0;
+      this.maxAge = trailLength + Math.floor(rng() * trailLength * 0.8);
+    }
+
+    update(t) {
+      const angle = getFieldAngle(this.x, this.y, t);
+      this.prevX = this.x;
+      this.prevY = this.y;
+      this.x += Math.cos(angle) * this.speed;
+      this.y += Math.sin(angle) * this.speed;
+      this.age++;
+
+      if (this.x < -10 || this.x > W + 10 || this.y < -10 || this.y > H + 10 || this.age > this.maxAge) {
+        this.reset();
+      }
+    }
   }
-}
 
-const particles = [];
-for (let i = 0; i < particleCount; i++) {
-  particles.push(new Particle());
-}
-
-// ===== Rendering =====
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-
-ctx.fillStyle = '#000';
-ctx.fillRect(0, 0, W, H);
-
-const breathPeriod = 1000 + Math.floor(hashFloat(bytes, 29) * 600);
-
-function draw(frame) {
-  const t = frame * timeSpeed;
-
-  // Breathing fade
-  const breathPhase = (frame % breathPeriod) / breathPeriod;
-  const breathWave = Math.sin(breathPhase * Math.PI * 2);
-  const fadeAlpha = 0.003 + Math.max(0, breathWave) * 0.005;
-
-  // Dim background overlay
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.lineCap = 'round';
-
-  for (const p of particles) {
-    p.update(t);
-
-    const c = palette[p.colorIdx];
-    const lifeFrac = p.age / p.maxAge;
-    const fade = Math.sin(lifeFrac * Math.PI);
-    const a = p.baseAlpha * fade;
-
-    // Additive glow — subtle luminosity
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.10})`;
-    ctx.lineWidth = p.width * 3;
-    ctx.beginPath();
-    ctx.moveTo(p.prevX, p.prevY);
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
-
-    // Source-over core — pure color
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a})`;
-    ctx.lineWidth = p.width;
-    ctx.beginPath();
-    ctx.moveTo(p.prevX, p.prevY);
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
+  const particles = [];
+  for (let i = 0; i < particleCount; i++) {
+    particles.push(new Particle());
   }
-}
 
-let frame = 0;
+  // ===== Rendering =====
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
 
-function animate() {
-  draw(frame);
-  frame++;
-  requestAnimationFrame(animate);
-}
-
-animate();
-
-// Click to reset
-canvas.style.cursor = 'pointer';
-canvas.addEventListener('click', () => {
-  frame = 0;
-  ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
-  for (const p of particles) p.reset();
-});
 
-// ===== UI =====
-document.getElementById('hashDisplay').textContent = HASH;
-document.getElementById('blockInfo').textContent = `Block #${HEIGHT.toLocaleString()}`;
+  const breathPeriod = 1000 + Math.floor(hashFloat(bytes, 29) * 600);
 
-const paletteEl = document.getElementById('palette');
-for (const c of palette) {
-  const swatch = document.createElement('div');
-  swatch.className = 'swatch';
-  swatch.style.backgroundColor = `rgb(${c.r}, ${c.g}, ${c.b})`;
-  swatch.title = `rgb(${c.r}, ${c.g}, ${c.b})`;
-  paletteEl.appendChild(swatch);
+  function draw(frame) {
+    const t = frame * timeSpeed;
+
+    const breathPhase = (frame % breathPeriod) / breathPeriod;
+    const breathWave = Math.sin(breathPhase * Math.PI * 2);
+    const fadeAlpha = 0.003 + Math.max(0, breathWave) * 0.005;
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.lineCap = 'round';
+
+    for (const p of particles) {
+      p.update(t);
+
+      const c = palette[p.colorIdx];
+      const lifeFrac = p.age / p.maxAge;
+      const fade = Math.sin(lifeFrac * Math.PI);
+      const a = p.baseAlpha * fade;
+
+      // Additive glow
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.10})`;
+      ctx.lineWidth = p.width * 3;
+      ctx.beginPath();
+      ctx.moveTo(p.prevX, p.prevY);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+
+      // Source-over core
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a})`;
+      ctx.lineWidth = p.width;
+      ctx.beginPath();
+      ctx.moveTo(p.prevX, p.prevY);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    }
+  }
+
+  let frame = 0;
+
+  function animate() {
+    draw(frame);
+    frame++;
+    requestAnimationFrame(animate);
+  }
+
+  animate();
+
+  // Click to reset
+  canvas.style.cursor = 'pointer';
+  canvas.addEventListener('click', () => {
+    frame = 0;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    for (const p of particles) p.reset();
+  });
+
+  // ===== UI =====
+  document.getElementById('hashDisplay').textContent = HASH;
+  document.getElementById('blockInfo').textContent = `Block #${HEIGHT.toLocaleString()}`;
+
+  const paletteEl = document.getElementById('palette');
+  for (const c of palette) {
+    const swatch = document.createElement('div');
+    swatch.className = 'swatch';
+    swatch.style.backgroundColor = `rgb(${c.r}, ${c.g}, ${c.b})`;
+    swatch.title = `rgb(${c.r}, ${c.g}, ${c.b})`;
+    paletteEl.appendChild(swatch);
+  }
 }
+
+init();
 </script>
 </body>
 </html>
