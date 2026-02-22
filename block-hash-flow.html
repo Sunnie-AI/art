@@ -178,7 +178,7 @@ function getFieldAngle(x, y, t) {
 class Particle {
   constructor() {
     this.colorIdx = Math.floor(rng() * palette.length);
-    this.baseAlpha = 0.04 + rng() * 0.08;
+    this.baseAlpha = 0.05 + rng() * 0.10;
     this.width = 0.5 + rng() * 2.0;
     this.speed = 0.6 + rng() * 2.0;
     this.layer = rng();
@@ -232,15 +232,15 @@ function draw(frame) {
   // Breathing fade
   const breathPhase = (frame % breathPeriod) / breathPeriod;
   const breathWave = Math.sin(breathPhase * Math.PI * 2);
-  const fadeAlpha = 0.012 + Math.max(0, breathWave) * 0.008;
+  const fadeAlpha = 0.015 + Math.max(0, breathWave) * 0.010;
 
   // Dim background overlay
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
   ctx.fillRect(0, 0, W, H);
 
-  // Additive blending — overlapping trails glow
-  ctx.globalCompositeOperation = 'lighter';
+  // Screen blending — glow without blowing out to white
+  ctx.globalCompositeOperation = 'screen';
 
   for (const p of particles) {
     p.update(t);
