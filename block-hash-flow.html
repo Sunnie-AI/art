@@ -57,7 +57,7 @@ function hashFloat(bytes, offset, count = 1) {
 function extractPalette(bytes) {
   const colors = [];
   const baseHue = (bytes[16] * 7 + bytes[17] * 13 + bytes[20] * 23) % 360;
-  const spread = 30 + (bytes[22] % 80);
+  const spread = 50 + (bytes[22] % 90);
   const satBase = 70 + (bytes[24] % 25);
 
   const hueOffsets = [0, spread, -spread * 0.6, spread * 1.7, -spread * 0.3];
@@ -266,11 +266,6 @@ function draw(frame) {
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
   }
-
-  // Color-recovery pass — pull overdriven areas back toward palette
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.fillStyle = 'rgba(210, 200, 255, 0.97)';
-  ctx.fillRect(0, 0, W, H);
 }
 
 let frame = 0;
