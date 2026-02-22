@@ -178,8 +178,8 @@ function getFieldAngle(x, y, t) {
 class Particle {
   constructor() {
     this.colorIdx = Math.floor(rng() * palette.length);
-    this.baseAlpha = 0.12 + rng() * 0.18;
-    this.width = 0.8 + rng() * 1.8;
+    this.baseAlpha = 0.25 + rng() * 0.35;
+    this.width = 0.8 + rng() * 1.5;
     this.speed = 0.6 + rng() * 2.0;
     this.layer = rng();
     this.speed *= 0.5 + this.layer * 1.0;
@@ -232,7 +232,7 @@ function draw(frame) {
   // Breathing fade
   const breathPhase = (frame % breathPeriod) / breathPeriod;
   const breathWave = Math.sin(breathPhase * Math.PI * 2);
-  const fadeAlpha = 0.006 + Math.max(0, breathWave) * 0.008;
+  const fadeAlpha = 0.003 + Math.max(0, breathWave) * 0.005;
 
   // Dim background overlay
   ctx.globalCompositeOperation = 'source-over';
