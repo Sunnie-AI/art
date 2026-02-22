@@ -232,15 +232,12 @@ function draw(frame) {
   // Breathing fade
   const breathPhase = (frame % breathPeriod) / breathPeriod;
   const breathWave = Math.sin(breathPhase * Math.PI * 2);
-  const fadeAlpha = 0.015 + Math.max(0, breathWave) * 0.010;
+  const fadeAlpha = 0.010 + Math.max(0, breathWave) * 0.010;
 
   // Dim background overlay
   ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
   ctx.fillRect(0, 0, W, H);
-
-  // Screen blending — glow without blowing out to white
-  ctx.globalCompositeOperation = 'screen';
 
   for (const p of particles) {
     p.update(t);
@@ -250,17 +247,19 @@ function draw(frame) {
     const fade = Math.sin(lifeFrac * Math.PI);
     const a = p.baseAlpha * fade;
 
-    // Glow layer — wider, carries color
-    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.2})`;
+    // Glow layer — additive for luminous color buildup
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.25})`;
     ctx.lineWidth = p.width * 3;
     ctx.beginPath();
     ctx.moveTo(p.prevX, p.prevY);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
 
-    // Core line — sharper, slightly dimmer to preserve color
-    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.7})`;
-    ctx.lineWidth = p.width * 0.8;
+    // Core line — screen to stay bright but preserve color
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.9})`;
+    ctx.lineWidth = p.width;
     ctx.beginPath();
     ctx.moveTo(p.prevX, p.prevY);
     ctx.lineTo(p.x, p.y);
