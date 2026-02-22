@@ -250,25 +250,17 @@ function draw(frame) {
     const fade = Math.sin(lifeFrac * Math.PI);
     const a = p.baseAlpha * fade;
 
-    // Outer glow — wide, very soft
-    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.08})`;
-    ctx.lineWidth = p.width * 5;
+    // Atmosphere glow — very faint, wide
+    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.04})`;
+    ctx.lineWidth = p.width * 4;
     ctx.beginPath();
     ctx.moveTo(p.prevX, p.prevY);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
 
-    // Inner glow — carries color
-    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.3})`;
-    ctx.lineWidth = p.width * 2;
-    ctx.beginPath();
-    ctx.moveTo(p.prevX, p.prevY);
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
-
-    // Core — thin and bright, neon effect
-    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 1.2})`;
-    ctx.lineWidth = Math.max(0.4, p.width * 0.3);
+    // Core — bright, thin
+    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a})`;
+    ctx.lineWidth = p.width * 0.5;
     ctx.beginPath();
     ctx.moveTo(p.prevX, p.prevY);
     ctx.lineTo(p.x, p.y);
