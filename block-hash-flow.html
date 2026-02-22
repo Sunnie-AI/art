@@ -239,7 +239,6 @@ function draw(frame) {
   ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
   ctx.fillRect(0, 0, W, H);
 
-  ctx.globalCompositeOperation = 'source-over';
   ctx.lineCap = 'round';
 
   for (const p of particles) {
@@ -250,6 +249,17 @@ function draw(frame) {
     const fade = Math.sin(lifeFrac * Math.PI);
     const a = p.baseAlpha * fade;
 
+    // Additive glow — subtle luminosity
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.06})`;
+    ctx.lineWidth = p.width * 3;
+    ctx.beginPath();
+    ctx.moveTo(p.prevX, p.prevY);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+
+    // Source-over core — pure color
+    ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a})`;
     ctx.lineWidth = p.width;
     ctx.beginPath();
