@@ -178,8 +178,8 @@ function getFieldAngle(x, y, t) {
 class Particle {
   constructor() {
     this.colorIdx = Math.floor(rng() * palette.length);
-    this.baseAlpha = 0.03 + rng() * 0.06;
-    this.width = 0.5 + rng() * 2.0;
+    this.baseAlpha = 0.04 + rng() * 0.07;
+    this.width = 0.8 + rng() * 1.8;
     this.speed = 0.6 + rng() * 2.0;
     this.layer = rng();
     this.speed *= 0.5 + this.layer * 1.0;
@@ -250,17 +250,25 @@ function draw(frame) {
     const fade = Math.sin(lifeFrac * Math.PI);
     const a = p.baseAlpha * fade;
 
-    // Glow layer
-    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.2})`;
-    ctx.lineWidth = p.width * 3;
+    // Outer glow — wide, very soft
+    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.08})`;
+    ctx.lineWidth = p.width * 5;
     ctx.beginPath();
     ctx.moveTo(p.prevX, p.prevY);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
 
-    // Core line
-    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a})`;
-    ctx.lineWidth = p.width * 0.6;
+    // Inner glow — carries color
+    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 0.3})`;
+    ctx.lineWidth = p.width * 2;
+    ctx.beginPath();
+    ctx.moveTo(p.prevX, p.prevY);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+
+    // Core — thin and bright, neon effect
+    ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${a * 1.2})`;
+    ctx.lineWidth = Math.max(0.4, p.width * 0.3);
     ctx.beginPath();
     ctx.moveTo(p.prevX, p.prevY);
     ctx.lineTo(p.x, p.y);
