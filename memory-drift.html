@@ -265,8 +265,16 @@ async function init() {
   });
 
   // Coherence cycle parameters
-  const coherencePeriod = 800 + Math.floor(hashFloat(originalBytes, 30, 2) * 600);
+  const coherencePeriod = 900 + Math.floor(hashFloat(originalBytes, 30, 2) * 500);
   const driftAmplitude = 0.15 + hashFloat(originalBytes, 27, 2) * 0.15;
+
+  // Spatial drift — during low coherence, each generation offsets in a different direction
+  const driftDirections = [];
+  for (let gen = 0; gen <= RECALL_GENERATIONS; gen++) {
+    const angle = (gen / (RECALL_GENERATIONS + 1)) * Math.PI * 2 + hashFloat(originalBytes, 14, 2) * Math.PI;
+    driftDirections.push({ dx: Math.cos(angle), dy: Math.sin(angle) });
+  }
+  const maxSpatialDrift = 25 + hashFloat(originalBytes, 12, 2) * 20; // pixels
 
   function getFieldAngle(genIdx, x, y, t, coherence) {
     const gd = genData[genIdx];
@@ -331,8 +339,13 @@ async function init() {
       const angle = getFieldAngle(this.genIdx, this.x, this.y, t, coherence);
       this.prevX = this.x;
       this.prevY = this.y;
-      this.x += Math.cos(angle) * this.speed;
-      this.y += Math.sin(angle) * this.speed;
+
+      // Spatial drift: during low coherence, recalls drift away from ground truth position
+      const drift = (1 - coherence) * this.genIdx * (maxSpatialDrift / RECALL_GENERATIONS);
+      const dd = driftDirections[this.genIdx];
+
+      this.x += Math.cos(angle) * this.speed + dd.dx * drift * 0.02;
+      this.y += Math.sin(angle) * this.speed + dd.dy * drift * 0.02;
       this.age++;
 
       if (this.x < -10 || this.x > W + 10 || this.y < -10 || this.y > H + 10 || this.age > this.maxAge) {
@@ -385,14 +398,22 @@ async function init() {
       p.update(t, coherence);
 
       const gd = genData[p.genIdx];
-      const c = gd.palette[p.colorIdx];
+      const baseC = gd.palette[p.colorIdx];
       const lifeFrac = p.age / p.maxAge;
       const fade = Math.sin(lifeFrac * Math.PI);
       const a = p.baseAlpha * fade;
 
+      // Color corruption: during drift, recall generations shift toward warm tones
+      const corruptionAmount = (1 - coherence) * (p.genIdx / RECALL_GENERATIONS) * 0.6;
+      const c = {
+        r: Math.min(255, Math.round(baseC.r + (200 - baseC.r) * corruptionAmount)),
+        g: Math.round(baseC.g * (1 - corruptionAmount * 0.5)),
+        b: Math.round(baseC.b * (1 - corruptionAmount * 0.7)),
+      };
+
       // During high coherence, all generations visible equally
-      // During drift, ground truth stays vivid, later recalls ghost out
-      const driftFade = p.genIdx === 0 ? 1 : coherence + (1 - coherence) * 0.5;
+      // During drift, ground truth stays vivid, later recalls ghost out slightly
+      const driftFade = p.genIdx === 0 ? 1 : coherence + (1 - coherence) * 0.6;
       const finalAlpha = a * driftFade;
 
       // Additive glow
