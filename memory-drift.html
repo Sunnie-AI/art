@@ -265,7 +265,7 @@ async function init() {
   });
 
   // Coherence cycle parameters
-  const coherencePeriod = 900 + Math.floor(hashFloat(originalBytes, 30, 2) * 500);
+  const coherencePeriod = 600 + Math.floor(hashFloat(originalBytes, 30, 2) * 400);
   const driftAmplitude = 0.15 + hashFloat(originalBytes, 27, 2) * 0.15;
 
   // Spatial drift — during low coherence, each generation offsets in a different direction
@@ -344,8 +344,8 @@ async function init() {
       const drift = (1 - coherence) * this.genIdx * (maxSpatialDrift / RECALL_GENERATIONS);
       const dd = driftDirections[this.genIdx];
 
-      this.x += Math.cos(angle) * this.speed + dd.dx * drift * 0.02;
-      this.y += Math.sin(angle) * this.speed + dd.dy * drift * 0.02;
+      this.x += Math.cos(angle) * this.speed + dd.dx * drift * 0.06;
+      this.y += Math.sin(angle) * this.speed + dd.dy * drift * 0.06;
       this.age++;
 
       if (this.x < -10 || this.x > W + 10 || this.y < -10 || this.y > H + 10 || this.age > this.maxAge) {
