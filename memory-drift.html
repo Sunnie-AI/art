@@ -288,8 +288,8 @@ async function init() {
   }
 
   // ===== Particles =====
-  const particlesPerGen = Math.floor((1800 + Math.floor(hashFloat(originalBytes, 24, 2) * 800)) / (RECALL_GENERATIONS + 1));
-  const trailLength = 100 + Math.floor(hashFloat(originalBytes, 26, 2) * 100);
+  const particlesPerGen = Math.floor((3000 + Math.floor(hashFloat(originalBytes, 24, 2) * 1200)) / (RECALL_GENERATIONS + 1));
+  const trailLength = 140 + Math.floor(hashFloat(originalBytes, 26, 2) * 120);
   const timeSpeed = 0.0003 + hashFloat(originalBytes, 28, 2) * 0.0005;
 
   class Particle {
@@ -297,20 +297,20 @@ async function init() {
       this.genIdx = genIdx;
       const gd = genData[genIdx];
       this.colorIdx = Math.floor(gd.genRng() * gd.palette.length);
-      this.baseAlpha = 0.25 + gd.genRng() * 0.35;
-      this.width = 0.8 + gd.genRng() * 1.4;
+      this.baseAlpha = 0.35 + gd.genRng() * 0.40;
+      this.width = 1.0 + gd.genRng() * 1.6;
       this.speed = 0.6 + gd.genRng() * 1.8;
       this.layer = gd.genRng();
       this.speed *= 0.5 + this.layer * 1.0;
       this.baseAlpha *= 0.5 + this.layer * 0.7;
 
-      // Ground truth particles are slightly brighter
+      // Ground truth particles are noticeably brighter and thicker
       if (genIdx === 0) {
-        this.baseAlpha *= 1.3;
-        this.width *= 1.1;
+        this.baseAlpha *= 1.5;
+        this.width *= 1.3;
       }
-      // Later recalls are dimmer
-      this.baseAlpha *= 1 - (genIdx / (RECALL_GENERATIONS + 1)) * 0.4;
+      // Later recalls are progressively dimmer
+      this.baseAlpha *= 1 - (genIdx / (RECALL_GENERATIONS + 1)) * 0.3;
 
       this.prevX = 0;
       this.prevY = 0;
@@ -373,8 +373,8 @@ async function init() {
         : sinVal * 0.8          // Drift phase: drops quickly
     ));
 
-    // Fade — faster during drift to clear the divergent trails
-    const fadeAlpha = 0.004 + (1 - coherence) * 0.004;
+    // Fade — slower to let trails build up, slightly faster during drift
+    const fadeAlpha = 0.002 + (1 - coherence) * 0.003;
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
     ctx.fillRect(0, 0, W, H);
