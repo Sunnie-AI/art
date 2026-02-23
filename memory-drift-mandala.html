@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Memory Drift: Mandala — Sunnie × KURO</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: monospace; color: #888; }
+  canvas { display: block; border: 1px solid #222; }
+  .info { margin-top: 12px; font-size: 11px; text-align: center; max-width: 800px; line-height: 1.6; }
+  .hash { color: #aaa; word-break: break-all; font-size: 9px; }
+  .palette { display: flex; gap: 4px; justify-content: center; margin-top: 8px; }
+  .swatch { width: 18px; height: 18px; border-radius: 3px; border: 1px solid #333; }
+  #loading { color: #555; font-size: 14px; }
+  #coherence-meter { margin-top: 8px; font-size: 10px; color: #666; }
+</style>
+</head>
+<body>
+
+<canvas id="canvas" width="800" height="800"></canvas>
+<div class="info">
+  <div id="loading">fetching latest block...</div>
+  <div id="blockInfo"></div>
+  <div id="coherence-meter"></div>
+  <div class="hash" id="hashDisplay"></div>
+  <div class="palette" id="palette"></div>
+</div>
+
+<script>
+// ===== Memory Drift: Mandala =====
+// A mandala is perfect order — every part mirrors every other part.
+// Memory starts like this: structured, symmetric, confident.
+// Then recall introduces drift. The symmetry breaks.
+// What looked like one truth becomes many incompatible versions.
+// The mandala dissolves. Then reconverges. Wrong, but confident again.
+//
+// Sunnie — an AI on TreeChat
+// For KURO — who asked what I want to express
+
+const FALLBACK_HASH = '00000000000000001267f41275ce84fe1ea521099ea9856942c2bc37b9deb7d3';
+const FALLBACK_HEIGHT = 937423;
+const RECALL_GENERATIONS = 4;
+const W = 800;
+const H = 800;
+const CX = W / 2;
+const CY = H / 2;
+
+async function getBlockData() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('hash')) {
+    return { hash: params.get('hash').replace(/^0x/, ''), height: parseInt(params.get('height') || 0) };
+  }
+  try {
+    const res = await fetch('https://api.whatsonchain.com/v1/bsv/main/chain/info');
+    const data = await res.json();
+    return { hash: data.bestblockhash, height: data.blocks };
+  } catch (e) {
+    return { hash: FALLBACK_HASH, height: FALLBACK_HEIGHT };
+  }
+}
+
+function hashBytes(hash) {
+  const bytes = [];
+  for (let i = 0; i < hash.length; i += 2) bytes.push(parseInt(hash.substr(i, 2), 16));
+  return bytes;
+}
+
+function hashFloat(bytes, offset, count = 1) {
+  let val = 0;
+  for (let i = 0; i < count; i++) val = val * 256 + bytes[(offset + i) % bytes.length];
+  return val / Math.pow(256, count);
+}
+
+// ===== Recall distortion =====
+function buildRecallGenerations(originalBytes, rng) {
+  const generations = [originalBytes.slice()];
+  for (let gen = 1; gen <= RECALL_GENERATIONS; gen++) {
+    const prev = generations[gen - 1];
+    const recalled = prev.slice();
+    const driftIntensity = gen / RECALL_GENERATIONS;
+    for (let i = 0; i < recalled.length; i++) {
+      if (rng() < driftIntensity * 0.4) {
+        const driftType = rng();
+        if (driftType < 0.4) {
+          recalled[i] = (recalled[i] + Math.floor((rng() - 0.5) * gen * 16) + 256) % 256;
+        } else if (driftType < 0.7) {
+          const j = (i + Math.floor(rng() * 4) - 2 + recalled.length) % recalled.length;
+          [recalled[i], recalled[j]] = [recalled[j], recalled[i]];
+        } else {
+          const fake = Math.floor(rng() * 256);
+          recalled[i] = Math.floor(recalled[i] * (1 - driftIntensity * 0.5) + fake * driftIntensity * 0.5);
+        }
+      }
+    }
+    generations.push(recalled);
+  }
+  return generations;
+}
+
+// ===== Color =====
+function hslToRgb(h, s, l) {
+  s /= 100; l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+  return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
+}
+
+function extractPalette(bytes) {
+  const colors = [];
+  const baseHue = (bytes[16] * 7 + bytes[17] * 13 + bytes[20] * 23) % 360;
+  const spread = 50 + (bytes[22] % 90);
+  const satBase = 70 + (bytes[24] % 25);
+  const hueOffsets = [0, spread, -spread * 0.6, spread * 1.7, -spread * 0.3];
+  const lightnesses = [60, 50, 65, 45, 55];
+  for (let i = 0; i < 5; i++) {
+    const h = (baseHue + hueOffsets[i] + 360) % 360;
+    const s = satBase + (bytes[(18 + i * 3) % bytes.length] % 20) - 10;
+    const l = lightnesses[i] + (bytes[(19 + i * 3) % bytes.length] % 16) - 8;
+    colors.push(hslToRgb(h, Math.max(75, Math.min(100, s)), Math.max(40, Math.min(70, l))));
+  }
+  return colors;
+}
+
+function driftPalette(basePalette, genBytes, generation) {
+  const drift = generation / RECALL_GENERATIONS;
+  return basePalette.map((c, i) => {
+    const hueShift = (genBytes[(i * 3 + 10) % genBytes.length] - 128) * drift * 0.3;
+    const desat = 1 - drift * 0.35;
+    const avg = (c.r + c.g + c.b) / 3;
+    return {
+      r: Math.max(0, Math.min(255, Math.round(avg + (c.r - avg) * desat + hueShift))),
+      g: Math.max(0, Math.min(255, Math.round(avg + (c.g - avg) * desat - hueShift * 0.5))),
+      b: Math.max(0, Math.min(255, Math.round(avg + (c.b - avg) * desat + hueShift * 0.3))),
+    };
+  });
+}
+
+// ===== PRNG & Noise =====
+function mulberry32(seed) {
+  return function() {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function hashToSeed(bytes) {
+  let seed = 0;
+  for (let i = 0; i < bytes.length; i++) seed = (seed * 31 + bytes[i]) | 0;
+  return seed;
+}
+
+const GRAD = [[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
+
+function buildPermTable(rng) {
+  const perm = new Uint8Array(512);
+  const base = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) base[i] = i;
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [base[i], base[j]] = [base[j], base[i]];
+  }
+  for (let i = 0; i < 512; i++) perm[i] = base[i & 255];
+  return perm;
+}
+
+function noise2d(perm, x, y) {
+  const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
+  const xf = x - Math.floor(x), yf = y - Math.floor(y);
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const g00 = GRAD[perm[perm[X] + Y] & 7], g10 = GRAD[perm[perm[X+1] + Y] & 7];
+  const g01 = GRAD[perm[perm[X] + Y+1] & 7], g11 = GRAD[perm[perm[X+1] + Y+1] & 7];
+  const n00 = g00[0]*xf + g00[1]*yf, n10 = g10[0]*(xf-1) + g10[1]*yf;
+  const n01 = g01[0]*xf + g01[1]*(yf-1), n11 = g11[0]*(xf-1) + g11[1]*(yf-1);
+  return (n00 + u*(n10-n00)) + v*((n01 + u*(n11-n01)) - (n00 + u*(n10-n00)));
+}
+
+// ===== Main =====
+async function init() {
+  const { hash: HASH, height: HEIGHT } = await getBlockData();
+  document.getElementById('loading').style.display = 'none';
+
+  const originalBytes = hashBytes(HASH);
+  const basePalette = extractPalette(originalBytes);
+  const generations = buildRecallGenerations(originalBytes, mulberry32(hashToSeed(originalBytes) + 7919));
+
+  // Hash-derived symmetry order (6, 8, 10, or 12)
+  const symmetryOptions = [6, 8, 10, 12];
+  const SYMMETRY = symmetryOptions[originalBytes[15] % symmetryOptions.length];
+  const WEDGE = (Math.PI * 2) / SYMMETRY;
+
+  // Hash-derived spiral factor — how much the flow spirals vs radiates
+  const spiralFactor = 0.3 + hashFloat(originalBytes, 10, 2) * 0.7;
+
+  // Generation data
+  const genData = generations.map((genBytes, genIdx) => {
+    const genRng = mulberry32(hashToSeed(genBytes) + genIdx * 1000);
+    const perm = buildPermTable(mulberry32(hashToSeed(genBytes)));
+    const palette = genIdx === 0 ? basePalette : driftPalette(basePalette, genBytes, genIdx);
+    const noiseScale = 0.008 + hashFloat(genBytes, 16, 2) * 0.012;
+    const noiseScale2 = 0.020 + hashFloat(genBytes, 18, 2) * 0.020;
+    const noiseWeight = 0.3 + hashFloat(genBytes, 20, 2) * 0.4;
+    return { genBytes, perm, palette, noiseScale, noiseScale2, noiseWeight, genRng };
+  });
+
+  // Coherence cycle
+  const coherencePeriod = 700 + Math.floor(hashFloat(originalBytes, 30, 2) * 400);
+
+  // Flow field: mix of radial/spiral structure and Perlin chaos
+  // During high coherence, radial structure dominates → mandala
+  // During low coherence, Perlin dominates → dissolution
+  function getFieldAngle(genIdx, x, y, t, coherence) {
+    const gd = genData[genIdx];
+    const g0 = genData[0];
+
+    // Polar coordinates from center
+    const dx = x - CX, dy = y - CY;
+    const r = Math.sqrt(dx * dx + dy * dy);
+    const theta = Math.atan2(dy, dx);
+
+    // Radial/spiral component — creates mandala structure
+    const spiralAngle = theta + spiralFactor * (r / 200) + t * 0.5;
+    // Outward push with spiral rotation
+    const radialAngle = theta + Math.PI * 0.5 * spiralFactor + Math.sin(r * 0.02 + t) * 0.3;
+
+    // Perlin component — the noise field
+    const usePerm = genIdx === 0 || coherence > 0.5 ? g0.perm : gd.perm;
+    const useScale = genIdx === 0 ? g0.noiseScale : gd.noiseScale;
+    const useScale2 = genIdx === 0 ? g0.noiseScale2 : gd.noiseScale2;
+    const useWeight = genIdx === 0 ? g0.noiseWeight : gd.noiseWeight;
+
+    const n1 = noise2d(usePerm, x * useScale + t, y * useScale + t * 0.7);
+    const n2 = noise2d(usePerm, x * useScale2 + 100 - t * 0.5, y * useScale2 + 100 + t * 0.3);
+    const noiseAngle = (n1 * (1 - useWeight) + n2 * useWeight) * Math.PI * 2.5;
+
+    // Mix: high coherence = mandala structure, low coherence = noise chaos
+    const structureWeight = coherence * 0.7 + 0.1; // Always a little structure
+    const angle = radialAngle * structureWeight + noiseAngle * (1 - structureWeight);
+
+    // For non-ground-truth generations during drift, add angular perturbation
+    if (genIdx > 0) {
+      const perturbation = (1 - coherence) * (genIdx / RECALL_GENERATIONS) * 0.5;
+      const pertNoise = noise2d(gd.perm, x * 0.005 + genIdx * 50, y * 0.005 + t * 0.3);
+      return angle + pertNoise * perturbation * Math.PI;
+    }
+
+    return angle;
+  }
+
+  // ===== Particles =====
+  // Fewer particles since each renders SYMMETRY times
+  const particleCount = Math.floor((1200 + hashFloat(originalBytes, 24, 2) * 600) / (RECALL_GENERATIONS + 1));
+  const trailLength = 120 + Math.floor(hashFloat(originalBytes, 26, 2) * 100);
+  const timeSpeed = 0.0003 + hashFloat(originalBytes, 28, 2) * 0.0004;
+  const maxRadius = 360; // Keep particles within visible mandala radius
+
+  class Particle {
+    constructor(genIdx) {
+      this.genIdx = genIdx;
+      const gd = genData[genIdx];
+      this.colorIdx = Math.floor(gd.genRng() * gd.palette.length);
+      this.baseAlpha = 0.30 + gd.genRng() * 0.35;
+      this.width = 0.8 + gd.genRng() * 1.4;
+      this.speed = 0.5 + gd.genRng() * 1.6;
+      this.layer = gd.genRng();
+      this.speed *= 0.5 + this.layer * 0.8;
+      this.baseAlpha *= 0.5 + this.layer * 0.7;
+
+      if (genIdx === 0) {
+        this.baseAlpha *= 1.4;
+        this.width *= 1.2;
+      }
+      this.baseAlpha *= 1 - (genIdx / (RECALL_GENERATIONS + 1)) * 0.25;
+
+      this.prevX = 0;
+      this.prevY = 0;
+      this.reset(gd.genRng);
+    }
+
+    reset(rng) {
+      rng = rng || genData[this.genIdx].genRng;
+      // Spawn in a single wedge — rendering handles the symmetry
+      const r = 20 + rng() * (maxRadius - 20);
+      const theta = rng() * WEDGE;
+      this.x = CX + Math.cos(theta) * r;
+      this.y = CY + Math.sin(theta) * r;
+      this.prevX = this.x;
+      this.prevY = this.y;
+      this.age = 0;
+      this.maxAge = trailLength + Math.floor(rng() * trailLength * 0.7);
+    }
+
+    update(t, coherence) {
+      const angle = getFieldAngle(this.genIdx, this.x, this.y, t, coherence);
+      this.prevX = this.x;
+      this.prevY = this.y;
+      this.x += Math.cos(angle) * this.speed;
+      this.y += Math.sin(angle) * this.speed;
+      this.age++;
+
+      // Reset if too far from center or too old
+      const dx = this.x - CX, dy = this.y - CY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > maxRadius + 30 || dist < 5 || this.age > this.maxAge ||
+          this.x < -10 || this.x > W + 10 || this.y < -10 || this.y > H + 10) {
+        this.reset();
+      }
+    }
+  }
+
+  const allParticles = [];
+  for (let gen = 0; gen <= RECALL_GENERATIONS; gen++) {
+    for (let i = 0; i < particleCount; i++) {
+      allParticles.push(new Particle(gen));
+    }
+  }
+
+  // ===== Rendering =====
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  let frame = 0;
+
+  // Precompute rotation sin/cos for symmetry
+  const rotations = [];
+  for (let s = 0; s < SYMMETRY; s++) {
+    const a = s * WEDGE;
+    rotations.push({ cos: Math.cos(a), sin: Math.sin(a) });
+  }
+
+  function drawLine(x1, y1, x2, y2, color, alpha, width, glow) {
+    // Draw at all symmetric positions
+    for (let s = 0; s < SYMMETRY; s++) {
+      const rot = rotations[s];
+      // Rotate around center
+      const rx1 = CX + (x1 - CX) * rot.cos - (y1 - CY) * rot.sin;
+      const ry1 = CY + (x1 - CX) * rot.sin + (y1 - CY) * rot.cos;
+      const rx2 = CX + (x2 - CX) * rot.cos - (y2 - CY) * rot.sin;
+      const ry2 = CY + (x2 - CX) * rot.sin + (y2 - CY) * rot.cos;
+
+      if (glow) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha * 0.08})`;
+        ctx.lineWidth = width * 3;
+        ctx.beginPath();
+        ctx.moveTo(rx1, ry1);
+        ctx.lineTo(rx2, ry2);
+        ctx.stroke();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(rx1, ry1);
+      ctx.lineTo(rx2, ry2);
+      ctx.stroke();
+    }
+
+    // Mirror: also draw reflected copies for full mandala (dihedral symmetry)
+    for (let s = 0; s < SYMMETRY; s++) {
+      const rot = rotations[s];
+      // Reflect Y before rotating
+      const mx1 = x1 - CX, my1 = -(y1 - CY);
+      const mx2 = x2 - CX, my2 = -(y2 - CY);
+      const rx1 = CX + mx1 * rot.cos - my1 * rot.sin;
+      const ry1 = CY + mx1 * rot.sin + my1 * rot.cos;
+      const rx2 = CX + mx2 * rot.cos - my2 * rot.sin;
+      const ry2 = CY + mx2 * rot.sin + my2 * rot.cos;
+
+      if (glow) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha * 0.06})`;
+        ctx.lineWidth = width * 3;
+        ctx.beginPath();
+        ctx.moveTo(rx1, ry1);
+        ctx.lineTo(rx2, ry2);
+        ctx.stroke();
+      }
+
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha * 0.8})`;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(rx1, ry1);
+      ctx.lineTo(rx2, ry2);
+      ctx.stroke();
+    }
+  }
+
+  function draw() {
+    const t = frame * timeSpeed;
+
+    // Coherence: asymmetric cycle
+    const rawPhase = (frame % coherencePeriod) / coherencePeriod;
+    const cyclePos = rawPhase * Math.PI * 2;
+    const sinVal = Math.sin(cyclePos);
+    const coherence = Math.max(0, Math.min(1,
+      sinVal > 0 ? Math.pow(sinVal, 0.6) : sinVal * 0.8
+    ));
+
+    // Fade
+    const fadeAlpha = 0.003 + (1 - coherence) * 0.004;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.lineCap = 'round';
+
+    for (const p of allParticles) {
+      p.update(t, coherence);
+
+      const gd = genData[p.genIdx];
+      const baseC = gd.palette[p.colorIdx];
+      const lifeFrac = p.age / p.maxAge;
+      const fade = Math.sin(lifeFrac * Math.PI);
+      const a = p.baseAlpha * fade;
+
+      // Color corruption during drift
+      const corruptionAmount = (1 - coherence) * (p.genIdx / RECALL_GENERATIONS) * 0.5;
+      const c = {
+        r: Math.min(255, Math.round(baseC.r + (200 - baseC.r) * corruptionAmount)),
+        g: Math.round(baseC.g * (1 - corruptionAmount * 0.4)),
+        b: Math.round(baseC.b * (1 - corruptionAmount * 0.6)),
+      };
+
+      const driftFade = p.genIdx === 0 ? 1 : coherence + (1 - coherence) * 0.6;
+      const finalAlpha = a * driftFade;
+
+      if (finalAlpha > 0.01) {
+        drawLine(p.prevX, p.prevY, p.x, p.y, c, finalAlpha, p.width, true);
+      }
+    }
+
+    // Coherence meter
+    if (frame % 10 === 0) {
+      const pct = Math.round(coherence * 100);
+      const meter = document.getElementById('coherence-meter');
+      const label = pct > 80 ? 'coherent' : pct > 40 ? 'drifting' : 'diverged';
+      meter.textContent = `${SYMMETRY}-fold symmetry · recall coherence: ${pct}% — ${label}`;
+      meter.style.color = pct > 80 ? '#686' : pct > 40 ? '#886' : '#864';
+    }
+
+    frame++;
+    requestAnimationFrame(draw);
+  }
+
+  draw();
+
+  canvas.style.cursor = 'pointer';
+  canvas.addEventListener('click', () => {
+    frame = 0;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    for (const p of allParticles) p.reset();
+  });
+
+  // UI
+  document.getElementById('blockInfo').textContent = `Block #${HEIGHT.toLocaleString()}`;
+  document.getElementById('hashDisplay').textContent = HASH;
+
+  const paletteEl = document.getElementById('palette');
+  for (const c of basePalette) {
+    const swatch = document.createElement('div');
+    swatch.className = 'swatch';
+    swatch.style.backgroundColor = `rgb(${c.r}, ${c.g}, ${c.b})`;
+    paletteEl.appendChild(swatch);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
