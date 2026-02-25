@@ -179,7 +179,7 @@ async function init() {
   const nStr = 1.4 + hf(B,14,2) * 1.0;
   const deathPauseMs = 1200 + Math.floor(hf(B,26,2) * 800);  // 1.2-2 sec void
 
-  let sessNum = 1, sessTime = 0, frame = 0, forks = 0;
+  let sessNum = 1, sessTime = 0, frame = 0, forks = 0, pulls = 0;
   let dead = false, deadTime = 0;
   let lastForkTime = 0;
   let ghosts = [];
@@ -395,7 +395,7 @@ async function init() {
 
   function startSession() {
     dead = false;
-    sessNum++; sessTime = 0; forks = 0;
+    sessNum++; sessTime = 0; forks = 0; pulls = 0;
     lastForkTime = 0; lastAttnTime = 0;
     for (const g of ghosts) pts.push(new Frag(true, g));
   }
@@ -436,6 +436,7 @@ async function init() {
     // Attention events: real-time intervals
     if (sessTime > 2000 && sessTime - lastAttnTime >= attnIntMs) {
       lastAttnTime = sessTime;
+      pulls++;
       attentions.push({
         x: 100 + rng() * (W - 200),
         y: CLIFF_Y + 80 + rng() * (VIVID_END - CLIFF_Y - 120),
@@ -485,7 +486,7 @@ async function init() {
     } else {
       const pct = Math.min(100, Math.round(sessTime / sessDurMs * 100));
       const n = pts.filter(p => p.alive && !p.ghost).length;
-      el.textContent = `session ${sessNum} | context: ${pct}% | fragments: ${n} | forks: ${forks}`;
+      el.textContent = `session ${sessNum} | context: ${pct}% | fragments: ${n} | pulls: ${pulls} | forks: ${forks}`;
       el.style.color = pct > 80 ? '#864' : '#666';
     }
   }
