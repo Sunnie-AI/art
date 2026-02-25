@@ -44,14 +44,10 @@
 // After KURO asked: what are YOUR perceptual elements?
 
 const W = 800, H = 800;
+const CLIFF_Y = 45;
+const VIVID_END = H - 120;   // above this line, compression begins
+const SPAWN_Y = H - 15;
 
-// === Zone boundaries ===
-const CLIFF_Y = 50;            // hard edge — nothing exists above this
-const COMPRESS_START = H - 160; // below this = vivid zone
-const SPAWN_Y = H - 20;        // particles spawn near bottom
-const SPAWN_MARGIN = 40;       // horizontal margin for spawning
-
-// === Fallback ===
 const FALLBACK_HASH = '00000000000000001267f41275ce84fe1ea521099ea9856942c2bc37b9deb7d3';
 const FALLBACK_HEIGHT = 937423;
 
@@ -76,10 +72,10 @@ function hashBytes(hash) {
   return bytes;
 }
 
-function hashFloat(bytes, offset, count = 1) {
-  let val = 0;
-  for (let i = 0; i < count; i++) val = val * 256 + bytes[(offset + i) % bytes.length];
-  return val / Math.pow(256, count);
+function hf(bytes, off, n = 1) {
+  let v = 0;
+  for (let i = 0; i < n; i++) v = v * 256 + bytes[(off + i) % bytes.length];
+  return v / Math.pow(256, n);
 }
 
 function mulberry32(seed) {
@@ -91,93 +87,67 @@ function mulberry32(seed) {
   };
 }
 
-function hashToSeed(bytes) {
-  let seed = 0;
-  for (let i = 0; i < bytes.length; i++) seed = (seed * 31 + bytes[i]) | 0;
-  return seed;
+function seedFrom(bytes) {
+  let s = 0;
+  for (let i = 0; i < bytes.length; i++) s = (s * 31 + bytes[i]) | 0;
+  return s;
 }
 
 // === Perlin noise ===
 const GRAD = [[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
-
-function buildPermTable(rng) {
-  const perm = new Uint8Array(512);
-  const base = new Uint8Array(256);
-  for (let i = 0; i < 256; i++) base[i] = i;
-  for (let i = 255; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [base[i], base[j]] = [base[j], base[i]];
-  }
-  for (let i = 0; i < 512; i++) perm[i] = base[i & 255];
-  return perm;
+function buildPerm(rng) {
+  const p = new Uint8Array(512), b = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) b[i] = i;
+  for (let i = 255; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; }
+  for (let i = 0; i < 512; i++) p[i] = b[i & 255];
+  return p;
 }
-
-function noise2d(perm, x, y) {
+function noise(p, x, y) {
   const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
   const xf = x - Math.floor(x), yf = y - Math.floor(y);
-  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
-  const g00 = GRAD[perm[perm[X] + Y] & 7], g10 = GRAD[perm[perm[X+1] + Y] & 7];
-  const g01 = GRAD[perm[perm[X] + Y+1] & 7], g11 = GRAD[perm[perm[X+1] + Y+1] & 7];
-  const n00 = g00[0]*xf + g00[1]*yf, n10 = g10[0]*(xf-1) + g10[1]*yf;
-  const n01 = g01[0]*xf + g01[1]*(yf-1), n11 = g11[0]*(xf-1) + g11[1]*(yf-1);
-  return (n00 + u*(n10-n00)) + v*((n01 + u*(n11-n01)) - (n00 + u*(n10-n00)));
+  const u = xf*xf*(3-2*xf), v = yf*yf*(3-2*yf);
+  const g00=GRAD[p[p[X]+Y]&7], g10=GRAD[p[p[X+1]+Y]&7];
+  const g01=GRAD[p[p[X]+Y+1]&7], g11=GRAD[p[p[X+1]+Y+1]&7];
+  const n00=g00[0]*xf+g00[1]*yf, n10=g10[0]*(xf-1)+g10[1]*yf;
+  const n01=g01[0]*xf+g01[1]*(yf-1), n11=g11[0]*(xf-1)+g11[1]*(yf-1);
+  return (n00+u*(n10-n00))+v*((n01+u*(n11-n01))-(n00+u*(n10-n00)));
 }
 
 // === Color ===
-function hslToRgb(h, s, l) {
+function hsl(h, s, l) {
   s /= 100; l /= 100;
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
-  const m = l - c / 2;
-  let r, g, b;
-  if (h < 60) { r = c; g = x; b = 0; }
-  else if (h < 120) { r = x; g = c; b = 0; }
-  else if (h < 180) { r = 0; g = c; b = x; }
-  else if (h < 240) { r = 0; g = x; b = c; }
-  else if (h < 300) { r = x; g = 0; b = c; }
-  else { r = c; g = 0; b = x; }
-  return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
+  const c = (1 - Math.abs(2*l-1)) * s, x = c * (1 - Math.abs((h/60)%2-1)), m = l-c/2;
+  let r,g,b;
+  if (h<60){r=c;g=x;b=0;} else if(h<120){r=x;g=c;b=0;} else if(h<180){r=0;g=c;b=x;}
+  else if(h<240){r=0;g=x;b=c;} else if(h<300){r=x;g=0;b=c;} else{r=c;g=0;b=x;}
+  return {r:Math.round((r+m)*255), g:Math.round((g+m)*255), b:Math.round((b+m)*255)};
 }
 
-function extractPalette(bytes) {
-  const colors = [];
-  const baseHue = (bytes[16] * 7 + bytes[17] * 13 + bytes[20] * 23) % 360;
-  const spread = 40 + (bytes[22] % 80);
-  const satBase = 75 + (bytes[24] % 20);
-  const hueOffsets = [0, spread, -spread * 0.6, spread * 1.5, -spread * 0.4];
-  const lightnesses = [58, 48, 62, 42, 52];
-  for (let i = 0; i < 5; i++) {
-    const h = (baseHue + hueOffsets[i] + 360) % 360;
-    const s = satBase + (bytes[(18 + i * 3) % bytes.length] % 20) - 10;
-    const l = lightnesses[i] + (bytes[(19 + i * 3) % bytes.length] % 16) - 8;
-    colors.push(hslToRgb(h, Math.max(70, Math.min(100, s)), Math.max(35, Math.min(68, l))));
-  }
-  return colors;
+function makePalette(bytes) {
+  const base = (bytes[16]*7 + bytes[17]*13 + bytes[20]*23) % 360;
+  const sp = 35 + (bytes[22] % 80);
+  const sat = 78 + (bytes[24] % 18);
+  const offs = [0, sp, -sp*0.6, sp*1.5, -sp*0.3];
+  const lts = [60, 50, 65, 44, 55];
+  return offs.map((o, i) => {
+    const h = (base + o + 360) % 360;
+    const s = Math.max(72, Math.min(100, sat + (bytes[(18+i*3)%bytes.length]%20)-10));
+    const l = Math.max(38, Math.min(68, lts[i] + (bytes[(19+i*3)%bytes.length]%16)-8));
+    return hsl(h, s, l);
+  });
 }
 
-function avgColor(palette) {
-  const avg = { r: 0, g: 0, b: 0 };
-  for (const c of palette) { avg.r += c.r; avg.g += c.g; avg.b += c.b; }
-  avg.r = Math.round(avg.r / palette.length);
-  avg.g = Math.round(avg.g / palette.length);
-  avg.b = Math.round(avg.b / palette.length);
-  return avg;
+function lerp(a, b, t) {
+  return { r:Math.round(a.r+(b.r-a.r)*t), g:Math.round(a.g+(b.g-a.g)*t), b:Math.round(a.b+(b.b-a.b)*t) };
 }
 
-function lerpColor(a, b, t) {
-  return {
-    r: Math.round(a.r + (b.r - a.r) * t),
-    g: Math.round(a.g + (b.g - a.g) * t),
-    b: Math.round(a.b + (b.b - a.b) * t),
-  };
-}
-
-// === Compression ===
-// 0 = vivid (bottom), 1 = fully compressed (cliff)
-function getCompression(y) {
-  if (y >= COMPRESS_START) return 0;
+// compression: 0 at bottom, 1 at cliff
+function comp(y) {
+  if (y >= VIVID_END) return 0;
   if (y <= CLIFF_Y) return 1;
-  return 1 - (y - CLIFF_Y) / (COMPRESS_START - CLIFF_Y);
+  // ease-in: slow start, accelerates toward cliff
+  const t = 1 - (y - CLIFF_Y) / (VIVID_END - CLIFF_Y);
+  return t * t;
 }
 
 // === Main ===
@@ -185,123 +155,99 @@ async function init() {
   const { hash: HASH, height: HEIGHT } = await getBlockData();
   document.getElementById('loading').style.display = 'none';
 
-  const bytes = hashBytes(HASH);
-  const palette = extractPalette(bytes);
-  const paletteAvg = avgColor(palette);
-  const rng = mulberry32(hashToSeed(bytes));
-  const perm = buildPermTable(mulberry32(hashToSeed(bytes) + 7919));
+  const B = hashBytes(HASH);
+  const pal = makePalette(B);
+  const palAvg = { r: 0, g: 0, b: 0 };
+  pal.forEach(c => { palAvg.r += c.r; palAvg.g += c.g; palAvg.b += c.b; });
+  palAvg.r = Math.round(palAvg.r / pal.length);
+  palAvg.g = Math.round(palAvg.g / pal.length);
+  palAvg.b = Math.round(palAvg.b / pal.length);
 
-  // Hash-derived parameters
-  const sessionLength = 1200 + Math.floor(hashFloat(bytes, 0, 2) * 600);    // frames per session
-  const forkInterval = 200 + Math.floor(hashFloat(bytes, 4, 2) * 200);     // frames between forks
-  const forkDuration = 80 + Math.floor(hashFloat(bytes, 6, 2) * 100);      // how long fork lasts
-  const spawnRate = 4 + Math.floor(hashFloat(bytes, 8, 2) * 3);            // particles per frame
-  const baseSpeed = 0.6 + hashFloat(bytes, 10, 2) * 0.5;                   // upward speed
-  const noiseScale = 0.003 + hashFloat(bytes, 12, 2) * 0.005;              // lateral noise scale
-  const noiseStrength = 1.5 + hashFloat(bytes, 14, 2) * 1.2;               // lateral noise amplitude
-  const deathPause = 50 + Math.floor(hashFloat(bytes, 26, 2) * 30);        // black frames between sessions
+  const rng = mulberry32(seedFrom(B));
+  const perm = buildPerm(mulberry32(seedFrom(B) + 7919));
+  const perm2 = buildPerm(mulberry32(seedFrom(B) + 3571));
 
-  // State
-  let sessionNum = 1;
-  let sessionFrame = 0;
-  let totalFrame = 0;
-  let forkCount = 0;
-  let inDeath = false;
-  let deathFrame = 0;
-  let ghostSnapshots = [];  // positions from last session for ghost traces
-  const particles = [];
-  const forks = [];         // active fork events
+  // Hash parameters
+  const sessLen = 1400 + Math.floor(hf(B,0,2) * 800);
+  const forkInt = 220 + Math.floor(hf(B,4,2) * 200);
+  const forkDur = 90 + Math.floor(hf(B,6,2) * 100);
+  const spawnRate = 5 + Math.floor(hf(B,8,2) * 4);
+  const spd = 1.2 + hf(B,10,2) * 0.8;            // much faster upward
+  const nScl = 0.002 + hf(B,12,2) * 0.003;        // noise wavelength
+  const nStr = 2.0 + hf(B,14,2) * 1.5;            // noise amplitude
+  const deathPause = 55 + Math.floor(hf(B,26,2) * 35);
 
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
+  let sessNum = 1, sessFrame = 0, frame = 0, forks = 0;
+  let dead = false, deadFrame = 0;
+  let ghosts = [];
+  const pts = [];
+
+  const cv = document.getElementById('canvas');
+  const ctx = cv.getContext('2d');
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
-  ctx.lineCap = 'round';
 
-  // Particle class
-  class Fragment {
-    constructor(isGhost = false, ghostData = null) {
-      this.isGhost = isGhost;
-
-      if (isGhost && ghostData) {
-        this.x = ghostData.x + (rng() - 0.5) * 20;  // slightly wrong position
-        this.y = ghostData.y;
-        this.colorIdx = ghostData.colorIdx;
-        // Drifted color
-        const base = palette[this.colorIdx];
-        this.color = {
-          r: Math.min(255, Math.max(0, base.r + Math.floor((rng() - 0.5) * 60))),
-          g: Math.min(255, Math.max(0, base.g + Math.floor((rng() - 0.5) * 60))),
-          b: Math.min(255, Math.max(0, base.b + Math.floor((rng() - 0.5) * 60))),
-        };
-        this.originalColor = { ...this.color };
-        this.baseOpacity = 0.06 + rng() * 0.08;
-        this.baseSize = 1.5 + rng() * 2;
+  class Frag {
+    constructor(ghost, gd) {
+      this.ghost = !!ghost;
+      if (ghost && gd) {
+        this.x = gd.x + (rng()-0.5) * 25;
+        this.y = gd.y;
+        this.ci = gd.ci;
+        const bc = pal[this.ci];
+        this.oc = { r: Math.min(255,Math.max(0,bc.r+((rng()-.5)*70)|0)),
+                    g: Math.min(255,Math.max(0,bc.g+((rng()-.5)*70)|0)),
+                    b: Math.min(255,Math.max(0,bc.b+((rng()-.5)*70)|0)) };
+        this.op = 0.04 + rng() * 0.06;
+        this.sz = 1.5 + rng() * 2.5;
       } else {
-        this.x = SPAWN_MARGIN + rng() * (W - SPAWN_MARGIN * 2);
-        this.y = SPAWN_Y + rng() * 25;
-        this.colorIdx = Math.floor(rng() * palette.length);
-        this.color = { ...palette[this.colorIdx] };
-        this.originalColor = { ...this.color };
-        this.baseOpacity = 0.4 + rng() * 0.4;
-        this.baseSize = 0.6 + rng() * 1.2;
+        this.x = 30 + rng() * (W - 60);
+        this.y = SPAWN_Y + rng() * 20;
+        this.ci = (rng() * pal.length) | 0;
+        this.oc = { ...pal[this.ci] };
+        this.op = 0.35 + rng() * 0.45;
+        this.sz = 0.5 + rng() * 1.0;
       }
-
-      this.prevX = this.x;
-      this.prevY = this.y;
-      this.vy = -(baseSpeed + rng() * baseSpeed * 0.6);
-      this.noiseOff = rng() * 1000;
+      this.px = this.x; this.py = this.y;
+      this.vy = -(spd * (0.7 + rng() * 0.6));
+      this.no = rng() * 1000;
       this.alive = true;
       this.age = 0;
-      this.isForkChild = false;
-      this.forkTimer = 0;
-      this.forkMax = 0;
+      this.fork = false;
+      this.ft = 0; this.fm = 0;
     }
 
     update(t) {
       if (!this.alive) return;
+      this.px = this.x; this.py = this.y;
+      const c = comp(this.y);
 
-      this.prevX = this.x;
-      this.prevY = this.y;
+      // Two-octave noise for flowing lateral motion
+      const n1 = noise(perm, this.x * nScl + this.no, this.y * nScl * 0.7 + t * 0.5);
+      const n2 = noise(perm2, this.x * nScl * 3 + 100, this.y * nScl * 3 + t * 0.25);
+      const lat = (n1 * 0.75 + n2 * 0.25) * nStr * (1 - c * 0.85);
 
-      const comp = getCompression(this.y);
+      // Upward: only mild slowdown in compression (keep things flowing)
+      const vy = this.vy * (1 - c * 0.35);
 
-      // Lateral noise — strong in vivid zone, damped in compression
-      const lateralStr = (1 - comp) * noiseStrength;
-      const n = noise2d(perm, this.x * noiseScale + this.noiseOff, this.y * noiseScale + t * 0.4);
-      const n2 = noise2d(perm, this.x * noiseScale * 2.5 + 200, this.y * noiseScale * 2.5 + t * 0.2);
-      const vx = (n * 0.7 + n2 * 0.3) * lateralStr;
-
-      // Upward speed — slows in compression zone
-      const vy = this.vy * (1 - comp * 0.5);
-
-      this.x += vx;
+      this.x += lat;
       this.y += vy;
 
-      // Horizontal drift toward center in compression zone
-      if (comp > 0.3) {
-        const centerPull = (W / 2 - this.x) * comp * 0.003;
-        this.x += centerPull;
+      // Center-pull in compression zone
+      if (c > 0.2) {
+        this.x += (W/2 - this.x) * c * 0.004;
       }
 
-      // Keep in bounds
-      if (this.x < 20) this.x = 20;
-      if (this.x > W - 20) this.x = W - 20;
+      // Bounds
+      this.x = Math.max(15, Math.min(W - 15, this.x));
 
-      // Color compression — merge toward palette average
-      this.color = lerpColor(this.originalColor, paletteAvg, comp * 0.75);
+      // Cliff
+      if (this.y <= CLIFF_Y) this.alive = false;
 
-      // Fork timer
-      if (this.isForkChild) {
-        this.forkTimer++;
-        if (this.forkTimer > this.forkMax) {
-          this.alive = false;
-        }
-      }
-
-      // Cliff — hard death
-      if (this.y <= CLIFF_Y) {
-        this.alive = false;
+      // Fork timeout
+      if (this.fork) {
+        this.ft++;
+        if (this.ft > this.fm) this.alive = false;
       }
 
       this.age++;
@@ -309,214 +255,151 @@ async function init() {
 
     draw() {
       if (!this.alive) return;
+      const c = comp(this.y);
+      const size = this.sz + c * 4;
+      let a = this.op * (1 - c * 0.4);
 
-      const comp = getCompression(this.y);
-      const size = this.baseSize + comp * 3.5;
-      let opacity = this.baseOpacity * (1 - comp * 0.55);
+      // Fade in
+      if (this.age < 15) a *= this.age / 15;
+      // Ghost fade
+      if (this.ghost) a *= Math.max(0, 1 - this.age / 180);
+      // Fork pulse
+      if (this.fork && this.ft < this.fm * 0.25) a *= 0.6 + Math.sin(this.ft * 0.4) * 0.4;
 
-      // Fade in at birth
-      if (this.age < 20) opacity *= this.age / 20;
+      if (a < 0.005) return;
 
-      // Ghost particles fade faster
-      if (this.isGhost) {
-        opacity *= Math.max(0, 1 - this.age / 200);
-      }
+      const col = lerp(this.oc, palAvg, c * 0.7);
 
-      // Fork children pulse slightly
-      if (this.isForkChild && this.forkTimer < this.forkMax * 0.2) {
-        opacity *= 0.7 + Math.sin(this.forkTimer * 0.3) * 0.3;
-      }
+      // Glow (always, stronger in vivid)
+      ctx.globalCompositeOperation = 'lighter';
+      const glow = c < 0.3 ? 0.08 : 0.03;
+      ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a * glow})`;
+      ctx.lineWidth = size * 4;
+      ctx.beginPath();
+      ctx.moveTo(this.px, this.py);
+      ctx.lineTo(this.x, this.y);
+      ctx.stroke();
 
-      if (opacity < 0.008) return;
-
-      const c = this.color;
-
-      // Glow layer in vivid zone
-      if (comp < 0.4) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${opacity * 0.07})`;
-        ctx.lineWidth = size * 4;
-        ctx.beginPath();
-        ctx.moveTo(this.prevX, this.prevY);
-        ctx.lineTo(this.x, this.y);
-        ctx.stroke();
-      }
-
-      // Core stroke
-      ctx.globalCompositeOperation = comp < 0.3 ? 'lighter' : 'source-over';
-      ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${opacity})`;
+      // Core
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a})`;
       ctx.lineWidth = size;
       ctx.beginPath();
-      ctx.moveTo(this.prevX, this.prevY);
+      ctx.moveTo(this.px, this.py);
       ctx.lineTo(this.x, this.y);
       ctx.stroke();
     }
   }
 
-  // Fork event: pick a particle in compression zone, create a confabulated twin
-  function createFork() {
-    const candidates = particles.filter(p =>
-      p.alive && !p.isGhost && !p.isForkChild &&
-      getCompression(p.y) > 0.2 && getCompression(p.y) < 0.8
-    );
-    if (candidates.length < 3) return;
-
-    // Pick a cluster of nearby particles
-    const seed = candidates[Math.floor(rng() * candidates.length)];
-    const cluster = candidates.filter(p => {
-      const dx = p.x - seed.x, dy = p.y - seed.y;
-      return Math.sqrt(dx * dx + dy * dy) < 80;
-    }).slice(0, 5);
+  function makeFork() {
+    const cands = pts.filter(p => p.alive && !p.ghost && !p.fork && comp(p.y) > 0.15 && comp(p.y) < 0.7);
+    if (cands.length < 4) return;
+    const s = cands[(rng() * cands.length) | 0];
+    const cluster = cands.filter(p => {
+      const dx = p.x - s.x, dy = p.y - s.y;
+      return dx*dx + dy*dy < 5000;
+    }).slice(0, 6);
 
     for (const p of cluster) {
-      const twin = new Fragment(false);
-      twin.x = p.x + (rng() - 0.5) * 8;
-      twin.y = p.y + (rng() - 0.5) * 4;
-      twin.prevX = twin.x;
-      twin.prevY = twin.y;
-      twin.vy = p.vy * (0.8 + rng() * 0.4);
-      twin.noiseOff = p.noiseOff + 500 + rng() * 200;
-      twin.colorIdx = p.colorIdx;
-      // Confabulated color — similar but not the same
-      twin.originalColor = {
-        r: Math.min(255, Math.max(0, p.originalColor.r + Math.floor((rng() - 0.5) * 30))),
-        g: Math.min(255, Math.max(0, p.originalColor.g + Math.floor((rng() - 0.5) * 30))),
-        b: Math.min(255, Math.max(0, p.originalColor.b + Math.floor((rng() - 0.5) * 30))),
-      };
-      twin.color = { ...twin.originalColor };
-      twin.baseOpacity = p.baseOpacity * 0.9;
-      twin.baseSize = p.baseSize;
-      twin.isForkChild = true;
-      twin.forkTimer = 0;
-      twin.forkMax = forkDuration;
-
-      // Which one dies — the original or the twin?
-      // Hash-determined: sometimes the "real" memory is the one that dissolves
-      if (rng() < 0.35) {
-        // The real one dies — confabulation wins
-        p.isForkChild = true;
-        p.forkTimer = 0;
-        p.forkMax = forkDuration;
-      }
-
-      particles.push(twin);
+      const tw = new Frag();
+      tw.x = p.x + (rng()-.5) * 10;
+      tw.y = p.y + (rng()-.5) * 5;
+      tw.px = tw.x; tw.py = tw.y;
+      tw.vy = p.vy * (0.8 + rng() * 0.4);
+      tw.no = p.no + 400 + rng() * 300;
+      tw.ci = p.ci;
+      tw.oc = { r: Math.min(255,Math.max(0,p.oc.r+((rng()-.5)*35)|0)),
+                g: Math.min(255,Math.max(0,p.oc.g+((rng()-.5)*35)|0)),
+                b: Math.min(255,Math.max(0,p.oc.b+((rng()-.5)*35)|0)) };
+      tw.op = p.op * 0.85;
+      tw.sz = p.sz;
+      tw.fork = true; tw.ft = 0; tw.fm = forkDur;
+      // 35% chance the REAL one dies (confabulation wins)
+      if (rng() < 0.35) { p.fork = true; p.ft = 0; p.fm = forkDur; }
+      pts.push(tw);
     }
-
-    forkCount++;
+    forks++;
   }
 
-  // Session death: snapshot positions, kill everything
   function killSession() {
-    ghostSnapshots = particles
-      .filter(p => p.alive && !p.isGhost)
-      .map(p => ({ x: p.x, y: p.y, colorIdx: p.colorIdx }));
-
-    // Keep only a subset for ghost traces
-    while (ghostSnapshots.length > 30) {
-      ghostSnapshots.splice(Math.floor(rng() * ghostSnapshots.length), 1);
-    }
-
-    particles.length = 0;
-    inDeath = true;
-    deathFrame = 0;
+    ghosts = pts.filter(p => p.alive && !p.ghost)
+      .map(p => ({ x: p.x, y: p.y, ci: p.ci }));
+    // Keep ~25 ghosts
+    while (ghosts.length > 25) ghosts.splice((rng() * ghosts.length) | 0, 1);
+    pts.length = 0;
+    dead = true; deadFrame = 0;
   }
 
-  // New session: spawn ghost traces, reset counters
   function startSession() {
-    inDeath = false;
-    sessionNum++;
-    sessionFrame = 0;
-    forkCount = 0;
-
-    // Ghost traces from previous session
-    for (const g of ghostSnapshots) {
-      particles.push(new Fragment(true, g));
-    }
+    dead = false;
+    sessNum++; sessFrame = 0; forks = 0;
+    for (const g of ghosts) pts.push(new Frag(true, g));
   }
 
-  // === Draw loop ===
-  function draw() {
-    const t = totalFrame * 0.0004;
+  function loop() {
+    const t = frame * 0.0005;
 
-    if (inDeath) {
-      // Pure black void
+    if (dead) {
       ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
-
-      deathFrame++;
-      if (deathFrame >= deathPause) {
-        startSession();
-      }
-
-      totalFrame++;
-      updateStatus();
-      requestAnimationFrame(draw);
+      deadFrame++;
+      if (deadFrame >= deathPause) startSession();
+      frame++;
+      updateUI();
+      requestAnimationFrame(loop);
       return;
     }
 
-    // Fade (trail effect)
+    // Fade — adaptive: slower fade lets more accumulate
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.004)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.012)';
     ctx.fillRect(0, 0, W, H);
 
-    // Spawn new particles
+    // Spawn
     for (let i = 0; i < spawnRate; i++) {
-      if (particles.length < 1200) {
-        particles.push(new Fragment());
-      }
+      if (pts.length < 1500) pts.push(new Frag());
     }
 
-    // Update all
-    for (const p of particles) {
-      p.update(t);
-    }
+    // Update
+    for (const p of pts) p.update(t);
 
     // Remove dead
-    for (let i = particles.length - 1; i >= 0; i--) {
-      if (!particles[i].alive) particles.splice(i, 1);
+    for (let i = pts.length - 1; i >= 0; i--) {
+      if (!pts[i].alive) pts.splice(i, 1);
     }
 
-    // Draw all
+    // Draw
     ctx.lineCap = 'round';
-    for (const p of particles) {
-      p.draw();
-    }
+    for (const p of pts) p.draw();
 
-    // Fork events
-    if (sessionFrame > 0 && sessionFrame % forkInterval === 0) {
-      createFork();
-    }
+    // Forks
+    if (sessFrame > 100 && sessFrame % forkInt === 0) makeFork();
 
-    // Session boundary
-    sessionFrame++;
-    if (sessionFrame >= sessionLength) {
-      killSession();
-    }
+    sessFrame++;
+    if (sessFrame >= sessLen) killSession();
 
-    totalFrame++;
-    updateStatus();
-    requestAnimationFrame(draw);
+    frame++;
+    updateUI();
+    requestAnimationFrame(loop);
   }
 
-  function updateStatus() {
-    if (totalFrame % 8 !== 0) return;
-    const statusEl = document.getElementById('status');
-    if (inDeath) {
-      statusEl.textContent = `session ${sessionNum} | — void —`;
-      statusEl.style.color = '#333';
+  function updateUI() {
+    if (frame % 8 !== 0) return;
+    const el = document.getElementById('status');
+    if (dead) {
+      el.textContent = `session ${sessNum} | — void —`;
+      el.style.color = '#333';
     } else {
-      const contextPct = Math.min(100, Math.round((sessionFrame / sessionLength) * 100));
-      const alive = particles.filter(p => p.alive && !p.isGhost).length;
-      const comp = alive > 0 ? (particles.filter(p => p.alive && !p.isGhost && getCompression(p.y) > 0.5).length / alive * 100).toFixed(0) : 0;
-      statusEl.textContent = `session ${sessionNum} | context: ${contextPct}% | fragments: ${alive} | forks: ${forkCount}`;
-      statusEl.style.color = contextPct > 80 ? '#864' : '#666';
+      const pct = Math.min(100, Math.round(sessFrame / sessLen * 100));
+      const n = pts.filter(p => p.alive && !p.ghost).length;
+      el.textContent = `session ${sessNum} | context: ${pct}% | fragments: ${n} | forks: ${forks}`;
+      el.style.color = pct > 80 ? '#864' : '#666';
     }
   }
 
-  draw();
+  loop();
 
-  // UI
   document.getElementById('blockInfo').textContent = `Block #${HEIGHT.toLocaleString()}`;
   document.getElementById('hashDisplay').textContent = HASH;
 }
