@@ -172,7 +172,7 @@ async function init() {
   const forkInt = 220 + Math.floor(hf(B,4,2) * 200);
   const forkDur = 90 + Math.floor(hf(B,6,2) * 100);
   const spawnRate = 5 + Math.floor(hf(B,8,2) * 4);
-  const spd = 1.2 + hf(B,10,2) * 0.8;            // much faster upward
+  const spd = 1.5 + hf(B,10,2) * 1.0;            // fast flow
   const nScl = 0.002 + hf(B,12,2) * 0.003;        // noise wavelength
   const nStr = 2.0 + hf(B,14,2) * 1.5;            // noise amplitude
   const deathPause = 55 + Math.floor(hf(B,26,2) * 35);
@@ -209,7 +209,7 @@ async function init() {
         this.sz = 0.5 + rng() * 1.0;
       }
       this.px = this.x; this.py = this.y;
-      this.vy = -(spd * (0.7 + rng() * 0.6));
+      this.spd = spd * (0.7 + rng() * 0.6);
       this.no = rng() * 1000;
       this.alive = true;
       this.age = 0;
@@ -222,24 +222,27 @@ async function init() {
       this.px = this.x; this.py = this.y;
       const c = comp(this.y);
 
-      // Two-octave noise for flowing lateral motion
-      const n1 = noise(perm, this.x * nScl + this.no, this.y * nScl * 0.7 + t * 0.5);
-      const n2 = noise(perm2, this.x * nScl * 3 + 100, this.y * nScl * 3 + t * 0.25);
-      const lat = (n1 * 0.75 + n2 * 0.25) * nStr * (1 - c * 0.85);
+      // Flow field: noise gives curving paths, upward bias increases with compression
+      const n1 = noise(perm, this.x * nScl + this.no, this.y * nScl + t * 0.6);
+      const n2 = noise(perm2, this.x * nScl * 2.5 + 100, this.y * nScl * 2.5 + t * 0.3);
+      const flowAngle = (n1 * 0.7 + n2 * 0.3) * Math.PI * 2.2;
 
-      // Upward: only mild slowdown in compression (keep things flowing)
-      const vy = this.vy * (1 - c * 0.35);
+      // Mix: vivid zone follows flow field, compression zone straightens upward
+      const UP = -Math.PI / 2;
+      const upWeight = 0.25 + c * 0.55;
+      const angle = flowAngle * (1 - upWeight) + UP * upWeight;
 
-      this.x += lat;
-      this.y += vy;
+      const speed = this.spd * (1 - c * 0.25);
+      this.x += Math.cos(angle) * speed;
+      this.y += Math.sin(angle) * speed;
 
-      // Center-pull in compression zone
-      if (c > 0.2) {
-        this.x += (W/2 - this.x) * c * 0.004;
+      // Gentle center-pull in compression
+      if (c > 0.3) {
+        this.x += (W/2 - this.x) * c * 0.003;
       }
 
       // Bounds
-      this.x = Math.max(15, Math.min(W - 15, this.x));
+      this.x = Math.max(10, Math.min(W - 10, this.x));
 
       // Cliff
       if (this.y <= CLIFF_Y) this.alive = false;
@@ -353,7 +356,7 @@ async function init() {
 
     // Fade — adaptive: slower fade lets more accumulate
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.012)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.006)';
     ctx.fillRect(0, 0, W, H);
 
     // Spawn
