@@ -174,7 +174,7 @@ async function init() {
   const spawnRate = 5 + Math.floor(hf(B,8,2) * 4);
   const spd = 1.5 + hf(B,10,2) * 1.0;            // fast flow
   const nScl = 0.002 + hf(B,12,2) * 0.003;        // noise wavelength
-  const nStr = 2.0 + hf(B,14,2) * 1.5;            // noise amplitude
+  const nStr = 1.8 + hf(B,14,2) * 1.2;            // noise amplitude
   const deathPause = 55 + Math.floor(hf(B,26,2) * 35);
 
   let sessNum = 1, sessFrame = 0, frame = 0, forks = 0;
@@ -202,7 +202,7 @@ async function init() {
         this.sz = 1.5 + rng() * 2.5;
       } else {
         this.x = 30 + rng() * (W - 60);
-        this.y = SPAWN_Y + rng() * 20;
+        this.y = SPAWN_Y - rng() * rng() * 50;  // spread spawns, weighted toward bottom
         this.ci = (rng() * pal.length) | 0;
         this.oc = { ...pal[this.ci] };
         this.op = 0.35 + rng() * 0.45;
@@ -259,8 +259,8 @@ async function init() {
     draw() {
       if (!this.alive) return;
       const c = comp(this.y);
-      const size = this.sz + c * 4;
-      let a = this.op * (1 - c * 0.4);
+      const size = this.sz + c * 6;      // dramatic widening in compression
+      let a = this.op * (1 - c * 0.35);
 
       // Fade in
       if (this.age < 15) a *= this.age / 15;
@@ -271,7 +271,8 @@ async function init() {
 
       if (a < 0.005) return;
 
-      const col = lerp(this.oc, palAvg, c * 0.7);
+      // Color merges strongly toward average — identity dissolves
+      const col = lerp(this.oc, palAvg, c * 0.85);
 
       // Glow (always, stronger in vivid)
       ctx.globalCompositeOperation = 'lighter';
