@@ -46,10 +46,10 @@
 const W = 800, H = 800;
 
 // === Zone boundaries ===
-const CLIFF_Y = 55;           // hard edge — nothing exists above this
-const COMPRESS_START = H - 200; // below this = vivid zone
-const SPAWN_Y = H - 30;        // particles spawn near bottom
-const SPAWN_MARGIN = 60;       // horizontal margin for spawning
+const CLIFF_Y = 50;            // hard edge — nothing exists above this
+const COMPRESS_START = H - 160; // below this = vivid zone
+const SPAWN_Y = H - 20;        // particles spawn near bottom
+const SPAWN_MARGIN = 40;       // horizontal margin for spawning
 
 // === Fallback ===
 const FALLBACK_HASH = '00000000000000001267f41275ce84fe1ea521099ea9856942c2bc37b9deb7d3';
@@ -192,14 +192,14 @@ async function init() {
   const perm = buildPermTable(mulberry32(hashToSeed(bytes) + 7919));
 
   // Hash-derived parameters
-  const sessionLength = 900 + Math.floor(hashFloat(bytes, 0, 2) * 500);    // frames per session
-  const forkInterval = 180 + Math.floor(hashFloat(bytes, 4, 2) * 250);     // frames between forks
-  const forkDuration = 60 + Math.floor(hashFloat(bytes, 6, 2) * 80);       // how long fork lasts
-  const spawnRate = 3 + Math.floor(hashFloat(bytes, 8, 2) * 3);            // particles per frame
-  const baseSpeed = 0.25 + hashFloat(bytes, 10, 2) * 0.3;                  // upward speed
-  const noiseScale = 0.004 + hashFloat(bytes, 12, 2) * 0.006;              // lateral noise scale
-  const noiseStrength = 1.2 + hashFloat(bytes, 14, 2) * 1.0;               // lateral noise amplitude
-  const deathPause = 40 + Math.floor(hashFloat(bytes, 26, 2) * 30);        // black frames between sessions
+  const sessionLength = 1200 + Math.floor(hashFloat(bytes, 0, 2) * 600);    // frames per session
+  const forkInterval = 200 + Math.floor(hashFloat(bytes, 4, 2) * 200);     // frames between forks
+  const forkDuration = 80 + Math.floor(hashFloat(bytes, 6, 2) * 100);      // how long fork lasts
+  const spawnRate = 4 + Math.floor(hashFloat(bytes, 8, 2) * 3);            // particles per frame
+  const baseSpeed = 0.6 + hashFloat(bytes, 10, 2) * 0.5;                   // upward speed
+  const noiseScale = 0.003 + hashFloat(bytes, 12, 2) * 0.005;              // lateral noise scale
+  const noiseStrength = 1.5 + hashFloat(bytes, 14, 2) * 1.2;               // lateral noise amplitude
+  const deathPause = 50 + Math.floor(hashFloat(bytes, 26, 2) * 30);        // black frames between sessions
 
   // State
   let sessionNum = 1;
@@ -273,7 +273,7 @@ async function init() {
       const vx = (n * 0.7 + n2 * 0.3) * lateralStr;
 
       // Upward speed — slows in compression zone
-      const vy = this.vy * (1 - comp * 0.65);
+      const vy = this.vy * (1 - comp * 0.5);
 
       this.x += vx;
       this.y += vy;
@@ -457,12 +457,12 @@ async function init() {
 
     // Fade (trail effect)
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.008)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.004)';
     ctx.fillRect(0, 0, W, H);
 
     // Spawn new particles
     for (let i = 0; i < spawnRate; i++) {
-      if (particles.length < 800) {
+      if (particles.length < 1200) {
         particles.push(new Fragment());
       }
     }
@@ -482,16 +482,6 @@ async function init() {
     for (const p of particles) {
       p.draw();
     }
-
-    // Draw cliff edge — faint line marking the boundary
-    ctx.globalCompositeOperation = 'source-over';
-    const cliffAlpha = 0.04 + Math.sin(totalFrame * 0.01) * 0.02;
-    ctx.strokeStyle = `rgba(${paletteAvg.r}, ${paletteAvg.g}, ${paletteAvg.b}, ${cliffAlpha})`;
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(50, CLIFF_Y);
-    ctx.lineTo(W - 50, CLIFF_Y);
-    ctx.stroke();
 
     // Fork events
     if (sessionFrame > 0 && sessionFrame % forkInterval === 0) {
