@@ -209,7 +209,7 @@ async function init() {
         this.sz = 0.5 + rng() * 1.0;
       }
       this.px = this.x; this.py = this.y;
-      this.upSpd = spd * (0.6 + rng() * 0.8);
+      this.spd = spd * (0.6 + rng() * 0.8);
       this.no = rng() * 1000;
       this.alive = true;
       this.age = 0;
@@ -222,20 +222,23 @@ async function init() {
       this.px = this.x; this.py = this.y;
       const c = comp(this.y);
 
-      // Constant upward velocity (mild slowdown in compression)
-      const vy = -this.upSpd * (1 - c * 0.3);
+      // Flow field angle from two-octave noise
+      const n1 = noise(perm, this.x * nScl + this.no, this.y * nScl + t * 0.5);
+      const n2 = noise(perm2, this.x * nScl * 2.5 + 100, this.y * nScl * 2.5 + t * 0.3);
+      const flowAngle = (n1 * 0.7 + n2 * 0.3) * Math.PI * 2;
 
-      // Flowing lateral noise — two octaves for richness
-      const n1 = noise(perm, this.x * nScl + this.no, this.y * nScl * 0.8 + t * 0.5);
-      const n2 = noise(perm2, this.x * nScl * 2.5 + 100, this.y * nScl * 2.5 + t * 0.25);
-      const lateral = (n1 * 0.7 + n2 * 0.3) * nStr * (1 - c * 0.8);
+      // Strong upward bias — flows in vivid, straightens in compression
+      const UP = -Math.PI / 2;
+      const upW = 0.45 + c * 0.40;  // 45% up at bottom, 85% near cliff
+      const angle = flowAngle * (1 - upW) + UP * upW;
 
-      this.x += lateral;
-      this.y += vy;
+      const speed = this.spd * (1 - c * 0.2);
+      this.x += Math.cos(angle) * speed;
+      this.y += Math.sin(angle) * speed;
 
       // Center-pull in compression zone
-      if (c > 0.25) {
-        this.x += (W/2 - this.x) * c * 0.004;
+      if (c > 0.3) {
+        this.x += (W/2 - this.x) * c * 0.003;
       }
 
       // Bounds
@@ -353,7 +356,7 @@ async function init() {
 
     // Fade — adaptive: slower fade lets more accumulate
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.006)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.008)';
     ctx.fillRect(0, 0, W, H);
 
     // Spawn
