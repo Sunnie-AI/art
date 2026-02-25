@@ -186,7 +186,7 @@ async function init() {
 
   // Attention events: focal points that pull nearby particles
   const attentions = [];
-  const attnInterval = 180 + Math.floor(hf(B,28,2) * 150);  // ~3-5 sec at 60fps
+  const attnInterval = 120 + Math.floor(hf(B,28,2) * 100);  // ~2-3.5 sec at 60fps
 
   const cv = document.getElementById('canvas');
   const ctx = cv.getContext('2d');
@@ -427,9 +427,9 @@ async function init() {
       attentions.push({
         x: 100 + rng() * (W - 200),
         y: CLIFF_Y + 80 + rng() * (VIVID_END - CLIFF_Y - 120),
-        radius: 140 + rng() * 160,           // big influence zone
-        strength: 2.5 + rng() * 2.0,         // strong pull
-        life: 90 + Math.floor(rng() * 120),   // ~1.5-3.5 sec at 60fps
+        radius: 180 + rng() * 200,           // very big influence zone
+        strength: 4.0 + rng() * 3.0,         // very strong pull
+        life: 180 + Math.floor(rng() * 240),  // ~3-7 sec at 60fps
         age: 0
       });
     }
