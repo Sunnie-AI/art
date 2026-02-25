@@ -271,6 +271,12 @@ async function init() {
       // Fork pulse
       if (this.fork && this.ft < this.fm * 0.25) a *= 0.6 + Math.sin(this.ft * 0.4) * 0.4;
 
+      // Edge fade — prevent bright accumulation at boundaries
+      const edgeX = Math.min(this.x - 10, W - 10 - this.x);
+      if (edgeX < 50) a *= Math.max(0, edgeX / 50);
+      const edgeBot = H - this.y;
+      if (edgeBot < 25) a *= Math.max(0, edgeBot / 25);
+
       if (a < 0.005) return;
 
       // Color merges strongly toward average — identity dissolves
