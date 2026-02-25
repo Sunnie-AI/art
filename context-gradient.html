@@ -267,7 +267,7 @@ async function init() {
     draw() {
       if (!this.alive) return;
       const c = comp(this.y);
-      const size = this.sz + c * 6;      // dramatic widening in compression
+      const size = this.sz + c * c * 5;   // gradual widening — eased, no sudden jump
       let a = this.op * (1 - c * 0.35);
 
       // Fade in
