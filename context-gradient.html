@@ -169,7 +169,7 @@ async function init() {
 
   // Hash parameters
   const testMode = new URLSearchParams(window.location.search).has('test');
-  const sessLen = testMode ? 200 : (1400 + Math.floor(hf(B,0,2) * 800));
+  const sessLen = testMode ? 250 : (1400 + Math.floor(hf(B,0,2) * 800));
   const forkInt = 220 + Math.floor(hf(B,4,2) * 200);
   const forkDur = 90 + Math.floor(hf(B,6,2) * 100);
   const spawnRate = 3 + Math.floor(hf(B,8,2) * 3);
@@ -199,8 +199,8 @@ async function init() {
         this.oc = { r: Math.min(255,Math.max(0,bc.r+((rng()-.5)*70)|0)),
                     g: Math.min(255,Math.max(0,bc.g+((rng()-.5)*70)|0)),
                     b: Math.min(255,Math.max(0,bc.b+((rng()-.5)*70)|0)) };
-        this.op = 0.04 + rng() * 0.06;
-        this.sz = 1.5 + rng() * 2.5;
+        this.op = 0.06 + rng() * 0.08;
+        this.sz = 2.0 + rng() * 3.0;
       } else {
         this.x = 30 + rng() * (W - 60);
         this.y = SPAWN_Y - rng() * rng() * 50;  // spread spawns, weighted toward bottom
@@ -242,9 +242,9 @@ async function init() {
         this.x += (W/2 - this.x) * c * 0.003;
       }
 
-      // Soft bounds — reflect with damping instead of hard clamp
-      if (this.x < 30) this.x = 30 + (30 - this.x) * 0.3;
-      if (this.x > W - 30) this.x = W - 30 - (this.x - (W - 30)) * 0.3;
+      // Soft bounds — reflect with damping, wide margin
+      if (this.x < 40) this.x = 40 + (40 - this.x) * 0.2;
+      if (this.x > W - 40) this.x = W - 40 - (this.x - (W - 40)) * 0.2;
 
       // Cliff
       if (this.y <= CLIFF_Y) this.alive = false;
