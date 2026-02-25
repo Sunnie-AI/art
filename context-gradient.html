@@ -169,7 +169,7 @@ async function init() {
 
   // Hash parameters
   const testMode = new URLSearchParams(window.location.search).has('test');
-  const sessLen = testMode ? 400 : (1400 + Math.floor(hf(B,0,2) * 800));
+  const sessLen = testMode ? 200 : (1400 + Math.floor(hf(B,0,2) * 800));
   const forkInt = 220 + Math.floor(hf(B,4,2) * 200);
   const forkDur = 90 + Math.floor(hf(B,6,2) * 100);
   const spawnRate = 3 + Math.floor(hf(B,8,2) * 3);
