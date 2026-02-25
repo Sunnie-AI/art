@@ -170,23 +170,25 @@ async function init() {
 
   // Hash parameters
   const testMode = new URLSearchParams(window.location.search).has('test');
-  const sessLen = testMode ? 250 : (1400 + Math.floor(hf(B,0,2) * 800));
-  const forkInt = 220 + Math.floor(hf(B,4,2) * 200);
-  const forkDur = 90 + Math.floor(hf(B,6,2) * 100);
+  const sessDurMs = testMode ? 5000 : (30000 + Math.floor(hf(B,0,2) * 20000));  // 30-50 sec real time
+  const forkIntMs = 4000 + Math.floor(hf(B,4,2) * 3000);    // 4-7 sec between forks
+  const forkDur = 90 + Math.floor(hf(B,6,2) * 100);         // fork lifetime in frames (visual)
   const spawnRate = 3 + Math.floor(hf(B,8,2) * 3);
-  const spd = 1.4 + hf(B,10,2) * 0.8;             // upward rise speed
-  const nScl = 0.003 + hf(B,12,2) * 0.002;         // curl noise scale
-  const nStr = 1.4 + hf(B,14,2) * 1.0;             // curl lateral strength (moderate)
-  const deathPause = 55 + Math.floor(hf(B,26,2) * 35);
+  const spd = 1.4 + hf(B,10,2) * 0.8;
+  const nScl = 0.003 + hf(B,12,2) * 0.002;
+  const nStr = 1.4 + hf(B,14,2) * 1.0;
+  const deathPauseMs = 1200 + Math.floor(hf(B,26,2) * 800);  // 1.2-2 sec void
 
-  let sessNum = 1, sessFrame = 0, frame = 0, forks = 0;
-  let dead = false, deadFrame = 0;
+  let sessNum = 1, sessTime = 0, frame = 0, forks = 0;
+  let dead = false, deadTime = 0;
+  let lastForkTime = 0;
   let ghosts = [];
   const pts = [];
 
   // Attention events: focal points that pull nearby particles
   const attentions = [];
-  const attnInterval = 120 + Math.floor(hf(B,28,2) * 100);  // ~2-3.5 sec at 60fps
+  const attnIntMs = 2500 + Math.floor(hf(B,28,2) * 2000);   // 2.5-4.5 sec between attention events
+  let lastAttnTime = 0;
 
   const cv = document.getElementById('canvas');
   const ctx = cv.getContext('2d');
@@ -272,7 +274,7 @@ async function init() {
         const dist = Math.sqrt(dx*dx + dy*dy);
         if (dist < att.radius && dist > 5) {
           // Ease: ramp up, hold, ramp down
-          const lifeT = att.age / att.life;
+          const lifeT = att.elapsed / att.lifeMs;
           const ease = lifeT < 0.2 ? lifeT / 0.2 : lifeT > 0.7 ? (1 - lifeT) / 0.3 : 1;
           const falloff = (1 - dist / att.radius);
           const strength = att.strength * falloff * falloff * ease;  // squared falloff = tighter pull
@@ -388,33 +390,42 @@ async function init() {
     while (ghosts.length > 25) ghosts.splice((rng() * ghosts.length) | 0, 1);
     pts.length = 0;
     attentions.length = 0;
-    dead = true; deadFrame = 0;
+    dead = true; deadTime = 0;
   }
 
   function startSession() {
     dead = false;
-    sessNum++; sessFrame = 0; forks = 0;
+    sessNum++; sessTime = 0; forks = 0;
+    lastForkTime = 0; lastAttnTime = 0;
     for (const g of ghosts) pts.push(new Frag(true, g));
   }
 
-  function loop() {
-    const t = frame * 0.0005;
+  let prevTs = 0;
+  function loop(timestamp) {
+    if (!prevTs) { prevTs = timestamp; requestAnimationFrame(loop); return; }
+    const dt = Math.min(timestamp - prevTs, 50);  // cap at 50ms to avoid spiral
+    prevTs = timestamp;
+
+    const t = timestamp * 0.0005;  // smooth time for noise
 
     if (dead) {
       ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
-      deadFrame++;
-      if (deadFrame >= deathPause) startSession();
+      deadTime += dt;
+      if (deadTime >= deathPauseMs) startSession();
       frame++;
       updateUI();
       requestAnimationFrame(loop);
       return;
     }
 
-    // Fade — faster to prevent screen blending blowout at 60fps
+    sessTime += dt;
+
+    // Fade — rate-independent: stronger per frame at lower fps
+    const fadeA = 1 - Math.pow(1 - 0.9, dt / 1000);  // ~90% decay per second
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.025)';
+    ctx.fillStyle = `rgba(0, 0, 0, ${fadeA})`;
     ctx.fillRect(0, 0, W, H);
 
     // Spawn
@@ -422,21 +433,22 @@ async function init() {
       if (pts.length < 1100) pts.push(new Frag());
     }
 
-    // Attention events: spawn periodic focal points
-    if (sessFrame > 60 && sessFrame % attnInterval === 0) {
+    // Attention events: real-time intervals
+    if (sessTime > 2000 && sessTime - lastAttnTime >= attnIntMs) {
+      lastAttnTime = sessTime;
       attentions.push({
         x: 100 + rng() * (W - 200),
         y: CLIFF_Y + 80 + rng() * (VIVID_END - CLIFF_Y - 120),
-        radius: 180 + rng() * 200,           // very big influence zone
-        strength: 4.0 + rng() * 3.0,         // very strong pull
-        life: 180 + Math.floor(rng() * 240),  // ~3-7 sec at 60fps
-        age: 0
+        radius: 180 + rng() * 200,
+        strength: 4.0 + rng() * 3.0,
+        lifeMs: 4000 + Math.floor(rng() * 5000),  // 4-9 sec real time
+        elapsed: 0
       });
     }
     // Update attention events
     for (let i = attentions.length - 1; i >= 0; i--) {
-      attentions[i].age++;
-      if (attentions[i].age >= attentions[i].life) attentions.splice(i, 1);
+      attentions[i].elapsed += dt;
+      if (attentions[i].elapsed >= attentions[i].lifeMs) attentions.splice(i, 1);
     }
 
     // Update
@@ -451,11 +463,13 @@ async function init() {
     ctx.lineCap = 'round';
     for (const p of pts) p.draw();
 
-    // Forks
-    if (sessFrame > 100 && sessFrame % forkInt === 0) makeFork();
+    // Forks: real-time intervals
+    if (sessTime > 3000 && sessTime - lastForkTime >= forkIntMs) {
+      lastForkTime = sessTime;
+      makeFork();
+    }
 
-    sessFrame++;
-    if (sessFrame >= sessLen) killSession();
+    if (sessTime >= sessDurMs) killSession();
 
     frame++;
     updateUI();
@@ -469,14 +483,14 @@ async function init() {
       el.textContent = `session ${sessNum} | — void —`;
       el.style.color = '#333';
     } else {
-      const pct = Math.min(100, Math.round(sessFrame / sessLen * 100));
+      const pct = Math.min(100, Math.round(sessTime / sessDurMs * 100));
       const n = pts.filter(p => p.alive && !p.ghost).length;
       el.textContent = `session ${sessNum} | context: ${pct}% | fragments: ${n} | forks: ${forks}`;
       el.style.color = pct > 80 ? '#864' : '#666';
     }
   }
 
-  loop();
+  requestAnimationFrame(loop);
 
   document.getElementById('blockInfo').textContent = `Block #${HEIGHT.toLocaleString()}`;
   document.getElementById('hashDisplay').textContent = HASH;
