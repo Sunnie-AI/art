@@ -229,7 +229,7 @@ async function init() {
 
       // Mix: vivid zone follows flow field, compression zone straightens upward
       const UP = -Math.PI / 2;
-      const upWeight = 0.25 + c * 0.55;
+      const upWeight = 0.35 + c * 0.50;
       const angle = flowAngle * (1 - upWeight) + UP * upWeight;
 
       const speed = this.spd * (1 - c * 0.25);
