@@ -223,15 +223,13 @@ async function init() {
       this.px = this.x; this.py = this.y;
       const c = comp(this.y);
 
-      // Flow field: two-octave noise for curving paths
+      // Flow field: two-octave noise, bounded lateral swing
       const n1 = noise(perm, this.x * nScl + this.no, this.y * nScl + t * 0.5);
       const n2 = noise(perm2, this.x * nScl * 2.5 + 100, this.y * nScl * 2.5 + t * 0.3);
-      const flowAngle = (n1 * 0.7 + n2 * 0.3) * Math.PI * 2;
-
-      // Upward bias increases with compression
+      // Lateral angle: ±70° from vertical, damped in compression
+      const lateralSwing = (n1 * 0.7 + n2 * 0.3) * Math.PI * 0.39;
       const UP = -Math.PI / 2;
-      const upW = 0.45 + c * 0.40;
-      const angle = flowAngle * (1 - upW) + UP * upW;
+      const angle = UP + lateralSwing * (1 - c * 0.8);
 
       const speed = this.spd * (1 - c * 0.2);
       this.x += Math.cos(angle) * speed;
