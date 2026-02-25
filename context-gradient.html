@@ -211,8 +211,8 @@ async function init() {
         // Cubic distribution — most are background, few are attended
         const s = rng(); this.salience = s * s * s;
         // High salience = slow, bright, thick; low = fast, faint, thin
-        this.op = 0.06 + this.salience * 0.45;
-        this.sz = 0.3 + this.salience * 2.2;
+        this.op = 0.12 + this.salience * 0.4;
+        this.sz = 0.4 + this.salience * 2.0;
       }
       this.px = this.x; this.py = this.y;
       // Speed: 3x range — background races through, salient lingers
@@ -388,7 +388,7 @@ async function init() {
 
     // Fade — faster to prevent screen blending blowout at 60fps
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.025)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.018)';
     ctx.fillRect(0, 0, W, H);
 
     // Spawn
