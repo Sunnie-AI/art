@@ -173,9 +173,9 @@ async function init() {
   const forkInt = 220 + Math.floor(hf(B,4,2) * 200);
   const forkDur = 90 + Math.floor(hf(B,6,2) * 100);
   const spawnRate = 3 + Math.floor(hf(B,8,2) * 3);
-  const spd = 1.0 + hf(B,10,2) * 0.6;             // upward rise speed
+  const spd = 1.4 + hf(B,10,2) * 0.8;             // upward rise speed
   const nScl = 0.003 + hf(B,12,2) * 0.002;         // curl noise scale
-  const nStr = 2.0 + hf(B,14,2) * 1.5;             // curl lateral strength
+  const nStr = 1.4 + hf(B,14,2) * 1.0;             // curl lateral strength (moderate)
   const deathPause = 55 + Math.floor(hf(B,26,2) * 35);
 
   let sessNum = 1, sessFrame = 0, frame = 0, forks = 0;
