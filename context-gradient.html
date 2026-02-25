@@ -171,7 +171,7 @@ async function init() {
   const sessLen = 1400 + Math.floor(hf(B,0,2) * 800);
   const forkInt = 220 + Math.floor(hf(B,4,2) * 200);
   const forkDur = 90 + Math.floor(hf(B,6,2) * 100);
-  const spawnRate = 5 + Math.floor(hf(B,8,2) * 4);
+  const spawnRate = 3 + Math.floor(hf(B,8,2) * 3);
   const spd = 1.5 + hf(B,10,2) * 1.0;            // fast flow
   const nScl = 0.002 + hf(B,12,2) * 0.003;        // noise wavelength
   const nStr = 1.8 + hf(B,14,2) * 1.2;            // noise amplitude
@@ -274,18 +274,19 @@ async function init() {
       // Color merges strongly toward average — identity dissolves
       const col = lerp(this.oc, palAvg, c * 0.85);
 
-      // Glow (always, stronger in vivid)
-      ctx.globalCompositeOperation = 'lighter';
-      const glow = c < 0.3 ? 0.08 : 0.03;
-      ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a * glow})`;
-      ctx.lineWidth = size * 4;
-      ctx.beginPath();
-      ctx.moveTo(this.px, this.py);
-      ctx.lineTo(this.x, this.y);
-      ctx.stroke();
+      // Glow in vivid zone only
+      if (c < 0.4) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a * 0.07})`;
+        ctx.lineWidth = size * 4;
+        ctx.beginPath();
+        ctx.moveTo(this.px, this.py);
+        ctx.lineTo(this.x, this.y);
+        ctx.stroke();
+      }
 
       // Core
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = c < 0.5 ? 'lighter' : 'source-over';
       ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a})`;
       ctx.lineWidth = size;
       ctx.beginPath();
@@ -362,7 +363,7 @@ async function init() {
 
     // Spawn
     for (let i = 0; i < spawnRate; i++) {
-      if (pts.length < 1500) pts.push(new Frag());
+      if (pts.length < 900) pts.push(new Frag());
     }
 
     // Update
