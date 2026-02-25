@@ -173,9 +173,9 @@ async function init() {
   const forkInt = 220 + Math.floor(hf(B,4,2) * 200);
   const forkDur = 90 + Math.floor(hf(B,6,2) * 100);
   const spawnRate = 3 + Math.floor(hf(B,8,2) * 3);
-  const spd = 1.5 + hf(B,10,2) * 1.0;            // fast flow
-  const nScl = 0.002 + hf(B,12,2) * 0.003;        // noise wavelength
-  const nStr = 1.8 + hf(B,14,2) * 1.2;            // noise amplitude
+  const spd = 1.2 + hf(B,10,2) * 0.8;             // moderate flow
+  const nScl = 0.0008 + hf(B,12,2) * 0.0008;      // very low freq: broad flowing regions
+  const nStr = 2.2 + hf(B,14,2) * 1.0;             // strong angular deviation
   const deathPause = 55 + Math.floor(hf(B,26,2) * 35);
 
   let sessNum = 1, sessFrame = 0, frame = 0, forks = 0;
@@ -206,8 +206,8 @@ async function init() {
         this.y = SPAWN_Y - rng() * rng() * 50;  // spread spawns, weighted toward bottom
         this.ci = (rng() * pal.length) | 0;
         this.oc = { ...pal[this.ci] };
-        this.op = 0.35 + rng() * 0.45;
-        this.sz = 0.5 + rng() * 1.0;
+        this.op = 0.2 + rng() * 0.35;
+        this.sz = 0.8 + rng() * 1.5;
       }
       this.px = this.x; this.py = this.y;
       this.spd = spd * (0.6 + rng() * 0.8);
@@ -223,11 +223,11 @@ async function init() {
       this.px = this.x; this.py = this.y;
       const c = comp(this.y);
 
-      // Two-octave flow field — angle creates flowing S-curves
-      const sLo = nScl * 0.6;   // low freq: big sweeping curves
-      const sHi = nScl * 2.0;   // high freq: fine detail
-      const n1 = noise(perm, this.x * sLo + this.no, this.y * sLo + t * 0.4);
-      const n2 = noise(perm2, this.x * sHi + 100, this.y * sHi + t * 0.2);
+      // Two-octave flow field — very low freq for broad coherent streams
+      const sLo = nScl * 0.4;   // extremely low freq: river-scale curves
+      const sHi = nScl * 1.5;   // moderate detail
+      const n1 = noise(perm, this.x * sLo + this.no, this.y * sLo + t * 0.6);
+      const n2 = noise(perm2, this.x * sHi + 100, this.y * sHi + t * 0.3);
       // Angle: straight up (-PI/2) + noise rotation
       const angle = -Math.PI/2 + (n1 * 0.8 + n2 * 0.2) * nStr;
       const speed = this.spd * (1 - c * 0.2);
