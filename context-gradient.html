@@ -268,7 +268,7 @@ async function init() {
       if (!this.alive) return;
       const c = comp(this.y);
       const size = this.sz + c * c * 5;   // gradual widening — eased, no sudden jump
-      let a = this.op * (1 - c * 0.65);
+      let a = this.op * (1 - c * 0.5);
 
       // Fade in
       if (this.age < 15) a *= this.age / 15;
@@ -288,12 +288,12 @@ async function init() {
       // Color merges strongly toward average — identity dissolves
       const col = lerp(this.oc, palAvg, c * 0.85);
 
-      // Smooth cross-fade: glow fades out as compression grows, wash fades in
-      const glowA = Math.max(0, 1 - c * 2.5);   // 1 at c=0, 0 at c=0.4
-      const washA = Math.min(1, c * 2.5);        // 0 at c=0, 1 at c=0.4
+      // Blending: screen in vivid zone (luminous glow), source-over in compression (can't blow out)
+      const blend = c < 0.3 ? 'screen' : 'source-over';
 
-      // Glow halo (vivid zone)
-      if (glowA > 0.01) {
+      // Glow halo (vivid zone only)
+      if (c < 0.4) {
+        const glowA = Math.max(0, 1 - c * 2.5);
         ctx.globalCompositeOperation = 'screen';
         ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a * 0.07 * glowA})`;
         ctx.lineWidth = size * 4;
@@ -303,19 +303,8 @@ async function init() {
         ctx.stroke();
       }
 
-      // Diffuse wash (compression zone — memories merging)
-      if (washA > 0.01) {
-        ctx.globalCompositeOperation = 'screen';
-        ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a * 0.015 * washA})`;
-        ctx.lineWidth = size * 6;
-        ctx.beginPath();
-        ctx.moveTo(this.px, this.py);
-        ctx.lineTo(this.x, this.y);
-        ctx.stroke();
-      }
-
       // Core stroke
-      ctx.globalCompositeOperation = 'screen';
+      ctx.globalCompositeOperation = blend;
       ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a})`;
       ctx.lineWidth = size;
       ctx.beginPath();
