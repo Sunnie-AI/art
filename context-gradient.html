@@ -238,14 +238,16 @@ async function init() {
       this.y += Math.sin(angle) * speed;
 
       // Center-pull in compression zone
-      if (c > 0.3) {
-        this.x += (W/2 - this.x) * c * 0.003;
+      if (c > 0.2) {
+        this.x += (W/2 - this.x) * c * 0.006;
       }
 
-      // Inward push near edges — prevent accumulation
-      if (this.x < 80) this.x += (80 - this.x) * 0.05;
-      if (this.x > W - 80) this.x -= (this.x - (W - 80)) * 0.05;
-      // Hard clamp as safety net
+      // Inward push near edges — strong, wide zone
+      if (this.x < 120) this.x += (120 - this.x) * 0.08;
+      if (this.x > W - 120) this.x -= (this.x - (W - 120)) * 0.08;
+      // Mild global centering to prevent one-sided flow
+      this.x += (W/2 - this.x) * 0.001;
+      // Hard clamp
       this.x = Math.max(20, Math.min(W - 20, this.x));
 
       // Cliff
