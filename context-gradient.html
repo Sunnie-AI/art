@@ -268,7 +268,7 @@ async function init() {
       if (!this.alive) return;
       const c = comp(this.y);
       const size = this.sz + c * c * 5;   // gradual widening — eased, no sudden jump
-      let a = this.op * (1 - c * 0.35);
+      let a = this.op * (1 - c * 0.65);
 
       // Fade in
       if (this.age < 15) a *= this.age / 15;
@@ -306,7 +306,7 @@ async function init() {
       // Diffuse wash (compression zone — memories merging)
       if (washA > 0.01) {
         ctx.globalCompositeOperation = 'screen';
-        ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a * 0.03 * washA})`;
+        ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a * 0.015 * washA})`;
         ctx.lineWidth = size * 6;
         ctx.beginPath();
         ctx.moveTo(this.px, this.py);
@@ -385,9 +385,9 @@ async function init() {
       return;
     }
 
-    // Fade — adaptive: slower fade lets more accumulate
+    // Fade — faster to prevent screen blending blowout at 60fps
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.008)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.025)';
     ctx.fillRect(0, 0, W, H);
 
     // Spawn
