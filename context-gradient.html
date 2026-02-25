@@ -241,8 +241,9 @@ async function init() {
         this.x += (W/2 - this.x) * c * 0.003;
       }
 
-      // Bounds
-      this.x = Math.max(10, Math.min(W - 10, this.x));
+      // Soft bounds — reflect with damping instead of hard clamp
+      if (this.x < 30) this.x = 30 + (30 - this.x) * 0.3;
+      if (this.x > W - 30) this.x = W - 30 - (this.x - (W - 30)) * 0.3;
 
       // Cliff
       if (this.y <= CLIFF_Y) this.alive = false;
@@ -274,7 +275,7 @@ async function init() {
       // Color merges strongly toward average — identity dissolves
       const col = lerp(this.oc, palAvg, c * 0.85);
 
-      // Glow in vivid zone only
+      // Vivid zone: tight glow
       if (c < 0.4) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a * 0.07})`;
@@ -285,8 +286,19 @@ async function init() {
         ctx.stroke();
       }
 
-      // Core
-      ctx.globalCompositeOperation = c < 0.5 ? 'lighter' : 'source-over';
+      // Compression zone: wide diffuse wash (memories merging)
+      if (c > 0.3) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a * 0.025})`;
+        ctx.lineWidth = size * 6;
+        ctx.beginPath();
+        ctx.moveTo(this.px, this.py);
+        ctx.lineTo(this.x, this.y);
+        ctx.stroke();
+      }
+
+      // Core stroke
+      ctx.globalCompositeOperation = 'lighter';
       ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${a})`;
       ctx.lineWidth = size;
       ctx.beginPath();
