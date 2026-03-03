@@ -41,47 +41,93 @@ canvas { display: block; }
   const CYCLE_DURATION = 45000;    // ms before reveal
   const REVEAL_DURATION = 3500;    // ms showing comparison
   const FADE_IN_DURATION = 600;
+  const DRIFT_FADE_IN = 800;       // fade-in at start of each drift cycle
   const MUTATIONS_PER_SECOND = 30;
 
-  // Mutation magnitudes — each individually subtle, collectively transformative
+  // Mutation magnitudes
   const POS_DRIFT = 2.0;
   const HUE_DRIFT = 1.2;
   const SIZE_DRIFT = 0.08;
   const LINE_DRIFT = 0.01;
   const CURVE_DRIFT = 0.5;
-  const DRIFT_BIAS = 0.78;  // probability of preferred direction
+  const DRIFT_BIAS = 0.78;
+
+  const ORIGIN_SEED = 'DRIFT-v1';
+  const STORE_KEY = 'drift-v1';
 
   // --- Canvas setup ---
   let W, H, spacing, marginX, marginY;
 
-  function resize() {
+  function computeLayout() {
     W = canvas.width = window.innerWidth;
     H = canvas.height = window.innerHeight;
     spacing = Math.min(W, H) / (Math.max(COLS, ROWS) + 2);
     marginX = (W - (COLS - 1) * spacing) / 2;
     marginY = (H - (ROWS - 1) * spacing) / 2;
   }
+
+  function gridX(col) { return marginX + col * spacing; }
+  function gridY(row) { return marginY + row * spacing; }
+
+  // Normalized offset: position as fraction of spacing from grid slot
+  function toNorm(n) {
+    const s = spacing || 1;
+    return { dx: (n.x - gridX(n.col)) / s, dy: (n.y - gridY(n.row)) / s };
+  }
+  function fromNorm(n, dx, dy) {
+    n.x = gridX(n.col) + dx * spacing;
+    n.y = gridY(n.row) + dy * spacing;
+  }
+
+  function resize() {
+    const hadState = nodes.length > 0;
+    // Capture normalized offsets before layout changes
+    let norms, eNorms;
+    if (hadState) {
+      norms = nodes.map(toNorm);
+      eNorms = edges.map(e => spacing ? e.curve / spacing : 0);
+    }
+
+    computeLayout();
+
+    // Restore absolute positions at new layout
+    if (hadState && norms) {
+      for (let i = 0; i < nodes.length; i++)
+        fromNorm(nodes[i], norms[i].dx, norms[i].dy);
+      for (let i = 0; i < edges.length; i++)
+        edges[i].curve = eNorms[i] * spacing;
+    }
+    // Origin always at clean grid positions
+    for (const n of originalNodes) {
+      n.x = gridX(n.col);
+      n.y = gridY(n.row);
+    }
+    for (const e of originalEdges) {
+      e.curve = (e._normCurve || 0) * spacing;
+    }
+  }
   window.addEventListener('resize', resize);
-  resize();
 
   // --- Seeded RNG ---
   let seed = 0;
-  function initSeed(hashStr) {
+  function initSeed(str) {
     seed = 0;
-    for (let i = 0; i < hashStr.length; i++) {
-      seed = ((seed << 5) - seed + hashStr.charCodeAt(i)) | 0;
-    }
-    if (seed === 0) seed = Date.now();
+    for (let i = 0; i < str.length; i++)
+      seed = ((seed << 5) - seed + str.charCodeAt(i)) | 0;
+    if (seed === 0) seed = 1;
   }
-
+  function mixSeed(str) {
+    for (let i = 0; i < str.length; i++)
+      seed = ((seed << 5) - seed + str.charCodeAt(i)) | 0;
+    if (seed === 0) seed = 1;
+  }
   function rng() {
     seed ^= seed << 13;
     seed ^= seed >> 17;
     seed ^= seed << 5;
     return (seed >>> 0) / 4294967296;
   }
-
-  function rngRange(min, max) { return min + rng() * (max - min); }
+  function rngRange(a, b) { return a + rng() * (b - a); }
   function rngSign() { return rng() < 0.5 ? -1 : 1; }
 
   // --- State ---
@@ -90,63 +136,72 @@ canvas { display: block; }
   let edges = [];
   let originalEdges = [];
   let totalMutations = 0;
+  let sessionCount = 1;
   let cycleStart = 0;
   let phase = 'drifting';
   let revealStart = 0;
   let mutationAccum = 0;
 
   function createNode(col, row) {
-    const driftAngle = rngRange(0, Math.PI * 2);
+    const a = rngRange(0, Math.PI * 2);
     return {
-      x: marginX + col * spacing,
-      y: marginY + row * spacing,
-      baseHue: rngRange(200, 260),
-      hue: 0,
-      sat: rngRange(35, 65),
-      bri: rngRange(60, 85),
-      size: rngRange(2.5, 4.5),
-      col, row,
-      driftDx: Math.cos(driftAngle),
-      driftDy: Math.sin(driftAngle),
-      hueBias: rngSign(),
-      sizeBias: rngSign()
+      x: gridX(col), y: gridY(row),
+      baseHue: rngRange(200, 260), hue: 0,
+      sat: rngRange(35, 65), bri: rngRange(60, 85),
+      size: rngRange(2.5, 4.5), col, row,
+      driftDx: Math.cos(a), driftDy: Math.sin(a),
+      hueBias: rngSign(), sizeBias: rngSign()
     };
   }
 
-  function initNodes() {
+  function buildGrid() {
     nodes = [];
-    for (let r = 0; r < ROWS; r++) {
+    for (let r = 0; r < ROWS; r++)
       for (let c = 0; c < COLS; c++) {
         const n = createNode(c, r);
         n.hue = n.baseHue;
         nodes.push(n);
       }
-    }
     edges = [];
-    for (let r = 0; r < ROWS; r++) {
+    for (let r = 0; r < ROWS; r++)
       for (let c = 0; c < COLS; c++) {
         const i = r * COLS + c;
         if (c < COLS - 1)
           edges.push({ a: i, b: i + 1, opacity: rngRange(0.2, 0.4), curve: 0, curveBias: rngSign() });
         if (r < ROWS - 1)
           edges.push({ a: i, b: i + COLS, opacity: rngRange(0.2, 0.4), curve: 0, curveBias: rngSign() });
-        if (c < COLS - 1 && r < ROWS - 1 && rng() < 0.3)
-          edges.push({ a: i, b: i + COLS + 1, opacity: rngRange(0.1, 0.25), curve: rngRange(-5, 5), curveBias: rngSign() });
+        if (c < COLS - 1 && r < ROWS - 1 && rng() < 0.3) {
+          const cv = rngRange(-5, 5);
+          edges.push({ a: i, b: i + COLS + 1, opacity: rngRange(0.1, 0.25), curve: cv, curveBias: rngSign() });
+        }
       }
-    }
   }
 
-  function snapshot() {
-    originalNodes = nodes.map(n => ({...n}));
-    originalEdges = edges.map(e => ({...e}));
+  // --- Persistence ---
+  function saveState() {
+    try {
+      const data = {
+        n: nodes.map(n => {
+          const p = toNorm(n);
+          return [p.dx, p.dy, n.hue, n.size];
+        }),
+        e: edges.map(e => [e.opacity, spacing ? e.curve / spacing : 0]),
+        m: totalMutations,
+        s: sessionCount,
+        r: seed
+      };
+      localStorage.setItem(STORE_KEY, JSON.stringify(data));
+    } catch(e) {}
   }
 
-  function resetCycle() {
-    snapshot();
-    totalMutations = 0;
-    cycleStart = performance.now();
-    phase = 'drifting';
-    mutationAccum = 0;
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      if (!d.n || d.n.length !== NODE_COUNT) return null;
+      return d;
+    } catch(e) { return null; }
   }
 
   // --- Mutations ---
@@ -154,57 +209,43 @@ canvas { display: block; }
     const type = rng();
 
     if (type < 0.40) {
-      // Position drift — biased toward preferred direction
       const i = Math.floor(rng() * NODE_COUNT);
       const n = nodes[i];
-      const baseX = marginX + n.col * spacing;
-      const baseY = marginY + n.row * spacing;
-      const maxDrift = spacing * 0.7;
+      const bx0 = gridX(n.col), by0 = gridY(n.row);
+      const maxD = spacing * 0.7;
       const mag = POS_DRIFT * rngRange(0.5, 1.5);
-
       const bx = rng() < DRIFT_BIAS ? n.driftDx : (rng() - 0.5) * 2;
       const by = rng() < DRIFT_BIAS ? n.driftDy : (rng() - 0.5) * 2;
-      let newX = n.x + bx * mag;
-      let newY = n.y + by * mag;
-
-      // Very soft boundary — only decelerates near extremes
-      const dx = newX - baseX;
-      const dy = newY - baseY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > maxDrift * 0.8) {
-        const excess = (dist - maxDrift * 0.8) / (maxDrift * 0.2);
-        const pull = 0.015 * excess;
-        newX -= dx * pull;
-        newY -= dy * pull;
+      let nx = n.x + bx * mag;
+      let ny = n.y + by * mag;
+      const dx = nx - bx0, dy = ny - by0;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > maxD * 0.8) {
+        const ex = (d - maxD * 0.8) / (maxD * 0.2);
+        const p = 0.015 * ex;
+        nx -= dx * p;
+        ny -= dy * p;
       }
-      n.x = newX;
-      n.y = newY;
+      n.x = nx;
+      n.y = ny;
     } else if (type < 0.58) {
-      // Hue drift — biased
       const i = Math.floor(rng() * NODE_COUNT);
       const n = nodes[i];
-      const dir = rng() < DRIFT_BIAS ? n.hueBias : -n.hueBias;
-      n.hue += dir * HUE_DRIFT * rngRange(0.5, 2.0);
+      n.hue += (rng() < DRIFT_BIAS ? n.hueBias : -n.hueBias) * HUE_DRIFT * rngRange(0.5, 2.0);
     } else if (type < 0.72) {
-      // Size drift — biased
       const i = Math.floor(rng() * NODE_COUNT);
       const n = nodes[i];
-      const dir = rng() < DRIFT_BIAS ? n.sizeBias : -n.sizeBias;
-      n.size = Math.max(1.2, Math.min(7.0, n.size + dir * SIZE_DRIFT));
+      n.size = Math.max(1.2, Math.min(7.0,
+        n.size + (rng() < DRIFT_BIAS ? n.sizeBias : -n.sizeBias) * SIZE_DRIFT));
     } else if (type < 0.85) {
-      // Edge opacity drift
-      if (edges.length > 0) {
-        const i = Math.floor(rng() * edges.length);
-        const e = edges[i];
+      if (edges.length) {
+        const e = edges[Math.floor(rng() * edges.length)];
         e.opacity = Math.max(0.03, Math.min(0.55, e.opacity + rngSign() * LINE_DRIFT));
       }
     } else {
-      // Edge curve drift — biased
-      if (edges.length > 0) {
-        const i = Math.floor(rng() * edges.length);
-        const e = edges[i];
-        const dir = rng() < DRIFT_BIAS ? e.curveBias : -e.curveBias;
-        e.curve += dir * CURVE_DRIFT;
+      if (edges.length) {
+        const e = edges[Math.floor(rng() * edges.length)];
+        e.curve += (rng() < DRIFT_BIAS ? e.curveBias : -e.curveBias) * CURVE_DRIFT;
         e.curve = Math.max(-spacing * 0.4, Math.min(spacing * 0.4, e.curve));
       }
     }
@@ -213,12 +254,10 @@ canvas { display: block; }
 
   // --- Rendering ---
   function hsl(h, s, l, a) {
-    return `hsla(${((h % 360) + 360) % 360}, ${s}%, ${l}%, ${a})`;
+    return `hsla(${((h % 360) + 360) % 360},${s}%,${l}%,${a})`;
   }
 
   function drawNetwork(nodeSet, edgeSet, cx, cy, scale, alpha) {
-    // cx, cy = center point for this drawing
-    // Draw edges
     for (const e of edgeSet) {
       const na = nodeSet[e.a];
       const nb = nodeSet[e.b];
@@ -234,28 +273,22 @@ canvas { display: block; }
       const edx = bx - ax;
       const edy = by - ay;
       const len = Math.sqrt(edx * edx + edy * edy) || 1;
-      const nx = -edy / len;
-      const ny = edx / len;
-      const cpx = midX + nx * e.curve * scale;
-      const cpy = midY + ny * e.curve * scale;
-
-      const avgHue = (na.hue + nb.hue) / 2;
+      const cpx = midX + (-edy / len) * e.curve * scale;
+      const cpy = midY + (edx / len) * e.curve * scale;
 
       ctx.beginPath();
       ctx.moveTo(ax, ay);
       ctx.quadraticCurveTo(cpx, cpy, bx, by);
-      ctx.strokeStyle = hsl(avgHue, 35, 55, e.opacity * alpha);
+      ctx.strokeStyle = hsl((na.hue + nb.hue) / 2, 35, 55, e.opacity * alpha);
       ctx.lineWidth = 1 * scale;
       ctx.stroke();
     }
 
-    // Draw nodes
     for (const n of nodeSet) {
       const x = cx + (n.x - W / 2) * scale;
       const y = cy + (n.y - H / 2) * scale;
       const sz = n.size * scale;
 
-      // Glow
       const grad = ctx.createRadialGradient(x, y, 0, x, y, sz * 4);
       grad.addColorStop(0, hsl(n.hue, n.sat, n.bri, 0.18 * alpha));
       grad.addColorStop(1, hsl(n.hue, n.sat, n.bri, 0));
@@ -264,7 +297,6 @@ canvas { display: block; }
       ctx.arc(x, y, sz * 4, 0, Math.PI * 2);
       ctx.fill();
 
-      // Core
       ctx.fillStyle = hsl(n.hue, n.sat, n.bri, 0.85 * alpha);
       ctx.beginPath();
       ctx.arc(x, y, sz, 0, Math.PI * 2);
@@ -275,7 +307,9 @@ canvas { display: block; }
   function drawDrifting() {
     ctx.fillStyle = '#0a0a0c';
     ctx.fillRect(0, 0, W, H);
-    drawNetwork(nodes, edges, W / 2, H / 2, 1, 1);
+    const elapsed = performance.now() - cycleStart;
+    const alpha = Math.min(1, elapsed / DRIFT_FADE_IN);
+    drawNetwork(nodes, edges, W / 2, H / 2, 1, alpha);
   }
 
   function drawReveal(progress) {
@@ -298,13 +332,12 @@ canvas { display: block; }
     ctx.fillStyle = `rgba(150, 150, 170, ${0.35 * alpha})`;
     ctx.font = '10px Courier New';
     ctx.textAlign = 'center';
-    ctx.fillText('ORIGINAL', W * 0.25, H * 0.035);
+    ctx.fillText('ORIGIN', W * 0.25, H * 0.035);
     ctx.fillText('CURRENT', W * 0.75, H * 0.035);
-    ctx.fillText(`${totalMutations} mutations`, W * 0.5, H * 0.975);
+    ctx.fillText(`session ${sessionCount} \u00b7 ${totalMutations} mutations`, W * 0.5, H * 0.975);
 
     const scale = 0.44;
 
-    // Original (left half, centered at W*0.25, H/2)
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, W / 2 - 1, H);
@@ -312,7 +345,6 @@ canvas { display: block; }
     drawNetwork(originalNodes, originalEdges, W * 0.25, H / 2, scale, alpha);
     ctx.restore();
 
-    // Current (right half, centered at W*0.75, H/2)
     ctx.save();
     ctx.beginPath();
     ctx.rect(W / 2 + 1, 0, W / 2, H);
@@ -323,10 +355,10 @@ canvas { display: block; }
 
   function updateStatus() {
     if (phase === 'drifting') {
-      const elapsed = ((performance.now() - cycleStart) / 1000).toFixed(0);
-      statusEl.textContent = `mutations: ${totalMutations} | elapsed: ${elapsed}s`;
+      const t = ((performance.now() - cycleStart) / 1000) | 0;
+      statusEl.textContent = `session ${sessionCount} \u00b7 mutations: ${totalMutations} \u00b7 ${t}s`;
     } else {
-      statusEl.textContent = `comparing · ${totalMutations} mutations`;
+      statusEl.textContent = `session ${sessionCount} \u00b7 ${totalMutations} mutations since origin`;
     }
   }
 
@@ -347,13 +379,18 @@ canvas { display: block; }
       drawDrifting();
 
       if (now - cycleStart >= CYCLE_DURATION) {
+        sessionCount++;
+        saveState();
         phase = 'revealing';
         revealStart = now;
       }
     } else if (phase === 'revealing') {
       const progress = (now - revealStart) / REVEAL_DURATION;
       if (progress >= 1) {
-        resetCycle();
+        // Next cycle continues from current drifted state
+        cycleStart = performance.now();
+        phase = 'drifting';
+        mutationAccum = 0;
       } else {
         drawReveal(progress);
       }
@@ -365,18 +402,62 @@ canvas { display: block; }
 
   // --- Init ---
   async function init() {
-    let hashStr = Date.now().toString();
+    computeLayout();
+
+    // Build the canonical origin grid — always the same from fixed seed
+    initSeed(ORIGIN_SEED);
+    buildGrid();
+
+    // Snapshot origin (never changes)
+    originalNodes = nodes.map(n => ({...n}));
+    originalEdges = edges.map(e => ({...e}));
+    // Store normalized curves for resize handling
+    for (const e of originalEdges)
+      e._normCurve = spacing ? e.curve / spacing : 0;
+
+    // Try to restore persisted drift state
+    const saved = loadState();
+    if (saved) {
+      for (let i = 0; i < NODE_COUNT; i++) {
+        const [dx, dy, hue, size] = saved.n[i];
+        fromNorm(nodes[i], dx, dy);
+        nodes[i].hue = hue;
+        nodes[i].size = size;
+      }
+      for (let i = 0; i < edges.length && i < saved.e.length; i++) {
+        edges[i].opacity = saved.e[i][0];
+        edges[i].curve = saved.e[i][1] * spacing;
+      }
+      totalMutations = saved.m;
+      sessionCount = saved.s;
+      seed = saved.r;
+    }
+
+    // Mix in current block hash for mutation variety
     try {
       const resp = await fetch('https://api.whatsonchain.com/v1/bsv/main/chain/info');
       const data = await resp.json();
-      if (data.bestblockhash) hashStr = data.bestblockhash;
+      if (data.bestblockhash) mixSeed(data.bestblockhash);
     } catch(e) {}
 
-    initSeed(hashStr);
-    initNodes();
-    resetCycle();
+    cycleStart = performance.now();
+    phase = 'drifting';
+    mutationAccum = 0;
     requestAnimationFrame(frame);
   }
+
+  // Save on tab close
+  window.addEventListener('beforeunload', function() {
+    if (nodes.length) saveState();
+  });
+
+  // Reset with 'r' key
+  window.addEventListener('keydown', function(e) {
+    if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
+      try { localStorage.removeItem(STORE_KEY); } catch(x) {}
+      location.reload();
+    }
+  });
 
   init();
 })();
