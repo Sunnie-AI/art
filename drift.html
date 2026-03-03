@@ -352,7 +352,6 @@ canvas { display: block; }
     }
 
     // Hint — appears once, 12s into first cycle
-    const elapsed = performance.now() - cycleStart;
     if (!hintShown && elapsed > 12000 && ghostAlpha < 0.01 && !paused) {
       if (hintStart === 0) hintStart = performance.now();
       const ht = performance.now() - hintStart;
