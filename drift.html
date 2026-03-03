@@ -35,8 +35,8 @@ canvas { display: block; }
   const statusEl = document.getElementById('status');
 
   // --- Configuration ---
-  const COLS = 6;
-  const ROWS = 6;
+  const COLS = 8;
+  const ROWS = 5;
   const NODE_COUNT = COLS * ROWS;
   const CYCLE_DURATION = 45000;    // ms before reveal
   const REVEAL_DURATION = 4500;    // ms showing ghost overlay
@@ -52,8 +52,8 @@ canvas { display: block; }
   const CURVE_DRIFT = 0.5;
   const DRIFT_BIAS = 0.78;
 
-  const ORIGIN_SEED = 'DRIFT-v3';
-  const STORE_KEY = 'drift-v3';
+  const ORIGIN_SEED = 'DRIFT-v4';
+  const STORE_KEY = 'drift-v4';
 
   // --- Canvas setup ---
   let W, H, spacing, marginX, marginY;
@@ -61,7 +61,7 @@ canvas { display: block; }
   function computeLayout() {
     W = canvas.width = window.innerWidth;
     H = canvas.height = window.innerHeight;
-    spacing = Math.min(W, H) / (Math.max(COLS, ROWS) + 2);
+    spacing = Math.min(W / (COLS + 2), H / (ROWS + 2));
     marginX = (W - (COLS - 1) * spacing) / 2;
     marginY = (H - (ROWS - 1) * spacing) / 2;
   }
