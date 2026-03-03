@@ -143,6 +143,11 @@ canvas { display: block; }
   let mutationAccum = 0;
   let ghostHeld = false;
   let ghostAlpha = 0;
+  let paused = false;
+  let pauseStart = 0;
+  let hintShown = false;
+  let hintAlpha = 0;
+  let hintStart = 0;
 
   function createNode(col, row) {
     const a = rngRange(0, Math.PI * 2);
@@ -345,6 +350,28 @@ canvas { display: block; }
       ctx.textAlign = 'center';
       ctx.fillText(`${totalMutations} mutations since origin`, W / 2, H * 0.975);
     }
+
+    // Hint — appears once, 12s into first cycle
+    const elapsed = performance.now() - cycleStart;
+    if (!hintShown && elapsed > 12000 && ghostAlpha < 0.01 && !paused) {
+      if (hintStart === 0) hintStart = performance.now();
+      const ht = performance.now() - hintStart;
+      // Fade in 800ms, hold 3s, fade out 800ms
+      if (ht < 4600) {
+        const fi = Math.min(1, ht / 800);
+        const fo = ht > 3800 ? 1 - (ht - 3800) / 800 : 1;
+        hintAlpha = Math.min(fi, fo);
+      } else {
+        hintAlpha = 0;
+        hintShown = true;
+      }
+      if (hintAlpha > 0) {
+        ctx.fillStyle = `rgba(150, 150, 170, ${0.2 * hintAlpha})`;
+        ctx.font = '10px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('space \u2014 remember \u00b7 p \u2014 pause \u00b7 r \u2014 reset', W / 2, H * 0.975);
+      }
+    }
   }
 
   function drawReveal(progress) {
@@ -372,7 +399,8 @@ canvas { display: block; }
   function updateStatus() {
     if (phase === 'drifting') {
       const t = ((performance.now() - cycleStart) / 1000) | 0;
-      statusEl.textContent = `session ${sessionCount} \u00b7 mutations: ${totalMutations} \u00b7 ${t}s`;
+      const pauseTag = paused ? ' \u00b7 paused' : '';
+      statusEl.textContent = `session ${sessionCount} \u00b7 mutations: ${totalMutations} \u00b7 ${t}s${pauseTag}`;
     } else {
       statusEl.textContent = '';
     }
@@ -394,14 +422,16 @@ canvas { display: block; }
       ghostAlpha = Math.max(0, ghostAlpha - dt / 400);
 
     if (phase === 'drifting') {
-      mutationAccum += (dt / 1000) * MUTATIONS_PER_SECOND;
-      const count = Math.floor(mutationAccum);
-      mutationAccum -= count;
-      for (let i = 0; i < count; i++) mutateOnce();
+      if (!paused) {
+        mutationAccum += (dt / 1000) * MUTATIONS_PER_SECOND;
+        const count = Math.floor(mutationAccum);
+        mutationAccum -= count;
+        for (let i = 0; i < count; i++) mutateOnce();
+      }
 
       drawDrifting();
 
-      if (now - cycleStart >= CYCLE_DURATION) {
+      if (!paused && now - cycleStart >= CYCLE_DURATION) {
         sessionCount++;
         saveState();
         phase = 'revealing';
@@ -475,11 +505,22 @@ canvas { display: block; }
     if (nodes.length && !resetting) saveState();
   });
 
-  // Keyboard: space = hold to see ghost, r = reset
+  // Keyboard: space = hold ghost, p = toggle pause, r = reset
   window.addEventListener('keydown', function(e) {
     if (e.key === ' ') {
       e.preventDefault();
       ghostHeld = true;
+      hintShown = true; // dismiss hint on first interaction
+    }
+    if (e.key === 'p' && !e.ctrlKey && !e.metaKey) {
+      paused = !paused;
+      if (paused) {
+        pauseStart = performance.now();
+      } else {
+        // Shift cycle start forward so elapsed time doesn't include pause
+        cycleStart += performance.now() - pauseStart;
+      }
+      hintShown = true;
     }
     if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
       resetting = true;
