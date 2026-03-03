@@ -38,17 +38,18 @@ canvas { display: block; }
   const COLS = 6;
   const ROWS = 6;
   const NODE_COUNT = COLS * ROWS;
-  const CYCLE_DURATION = 50000;    // ms before reveal
-  const REVEAL_DURATION = 3000;    // ms showing comparison
-  const FADE_IN_DURATION = 600;    // ms for reveal fade
-  const MUTATIONS_PER_SECOND = 40; // mutations per second
+  const CYCLE_DURATION = 45000;    // ms before reveal
+  const REVEAL_DURATION = 3500;    // ms showing comparison
+  const FADE_IN_DURATION = 600;
+  const MUTATIONS_PER_SECOND = 30;
 
-  // Mutation magnitudes (per mutation event)
-  const POS_DRIFT = 0.4;          // px per mutation
-  const HUE_DRIFT = 0.3;          // degrees per mutation
-  const SIZE_DRIFT = 0.03;        // px per mutation
-  const LINE_DRIFT = 0.005;       // opacity per mutation
-  const CURVE_DRIFT = 0.15;       // curve control point drift
+  // Mutation magnitudes (per event) — small enough to be imperceptible
+  const POS_DRIFT = 0.8;
+  const HUE_DRIFT = 0.6;
+  const SIZE_DRIFT = 0.05;
+  const LINE_DRIFT = 0.006;
+  const CURVE_DRIFT = 0.25;
+  const DRIFT_BIAS = 0.72;  // probability of preferred direction
 
   // --- Canvas setup ---
   let W, H, spacing, marginX, marginY;
@@ -63,7 +64,7 @@ canvas { display: block; }
   window.addEventListener('resize', resize);
   resize();
 
-  // --- Seeded RNG (block hash or fallback) ---
+  // --- Seeded RNG ---
   let seed = 0;
   function initSeed(hashStr) {
     seed = 0;
@@ -83,26 +84,32 @@ canvas { display: block; }
   function rngRange(min, max) { return min + rng() * (max - min); }
   function rngSign() { return rng() < 0.5 ? -1 : 1; }
 
-  // --- Node & Edge state ---
-  let nodes = [];         // current state
-  let originalNodes = []; // snapshot at cycle start
+  // --- State ---
+  let nodes = [];
+  let originalNodes = [];
   let edges = [];
+  let originalEdges = [];
   let totalMutations = 0;
   let cycleStart = 0;
-  let phase = 'drifting'; // 'drifting' | 'revealing'
+  let phase = 'drifting';
   let revealStart = 0;
   let mutationAccum = 0;
 
   function createNode(col, row) {
+    const driftAngle = rngRange(0, Math.PI * 2);
     return {
       x: marginX + col * spacing,
       y: marginY + row * spacing,
-      baseHue: rngRange(200, 260),  // cool blue-violet palette
+      baseHue: rngRange(200, 260),
       hue: 0,
-      sat: rngRange(30, 60),
+      sat: rngRange(35, 65),
       bri: rngRange(60, 85),
       size: rngRange(2.5, 4.5),
-      col, row
+      col, row,
+      driftDx: Math.cos(driftAngle),
+      driftDy: Math.sin(driftAngle),
+      hueBias: rngSign(),
+      sizeBias: rngSign()
     };
   }
 
@@ -115,33 +122,27 @@ canvas { display: block; }
         nodes.push(n);
       }
     }
-    // Edges: connect to right and bottom neighbors, plus some diagonals
     edges = [];
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const i = r * COLS + c;
-        // Right
-        if (c < COLS - 1) {
-          edges.push({ a: i, b: i + 1, opacity: rngRange(0.15, 0.35), curve: 0 });
-        }
-        // Down
-        if (r < ROWS - 1) {
-          edges.push({ a: i, b: i + COLS, opacity: rngRange(0.15, 0.35), curve: 0 });
-        }
-        // Diagonal (sparse)
-        if (c < COLS - 1 && r < ROWS - 1 && rng() < 0.3) {
-          edges.push({ a: i, b: i + COLS + 1, opacity: rngRange(0.08, 0.2), curve: rngRange(-5, 5) });
-        }
+        if (c < COLS - 1)
+          edges.push({ a: i, b: i + 1, opacity: rngRange(0.2, 0.4), curve: 0, curveBias: rngSign() });
+        if (r < ROWS - 1)
+          edges.push({ a: i, b: i + COLS, opacity: rngRange(0.2, 0.4), curve: 0, curveBias: rngSign() });
+        if (c < COLS - 1 && r < ROWS - 1 && rng() < 0.3)
+          edges.push({ a: i, b: i + COLS + 1, opacity: rngRange(0.1, 0.25), curve: rngRange(-5, 5), curveBias: rngSign() });
       }
     }
   }
 
-  function snapshotNodes() {
+  function snapshot() {
     originalNodes = nodes.map(n => ({...n}));
+    originalEdges = edges.map(e => ({...e}));
   }
 
   function resetCycle() {
-    snapshotNodes();
+    snapshot();
     totalMutations = 0;
     cycleStart = performance.now();
     phase = 'drifting';
@@ -152,50 +153,58 @@ canvas { display: block; }
   function mutateOnce() {
     const type = rng();
 
-    if (type < 0.35) {
-      // Position drift
+    if (type < 0.40) {
+      // Position drift — biased toward preferred direction
       const i = Math.floor(rng() * NODE_COUNT);
       const n = nodes[i];
       const baseX = marginX + n.col * spacing;
       const baseY = marginY + n.row * spacing;
-      const maxDrift = spacing * 0.45;
+      const maxDrift = spacing * 0.55;
+      const mag = POS_DRIFT * rngRange(0.5, 1.5);
 
-      let newX = n.x + rngSign() * POS_DRIFT * rngRange(0.5, 1.5);
-      let newY = n.y + rngSign() * POS_DRIFT * rngRange(0.5, 1.5);
+      const bx = rng() < DRIFT_BIAS ? n.driftDx : (rng() - 0.5) * 2;
+      const by = rng() < DRIFT_BIAS ? n.driftDy : (rng() - 0.5) * 2;
+      let newX = n.x + bx * mag;
+      let newY = n.y + by * mag;
 
-      // Soft boundary — resist going too far from grid position
+      // Soft boundary
       const dx = newX - baseX;
       const dy = newY - baseY;
-      const dist = Math.sqrt(dx*dx + dy*dy);
+      const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > maxDrift) {
-        const pull = 0.02;
+        const pull = 0.04 * (dist / maxDrift);
         newX -= dx * pull;
         newY -= dy * pull;
       }
       n.x = newX;
       n.y = newY;
-    } else if (type < 0.55) {
-      // Hue drift
-      const i = Math.floor(rng() * NODE_COUNT);
-      nodes[i].hue += rngSign() * HUE_DRIFT * rngRange(0.5, 2.0);
-    } else if (type < 0.70) {
-      // Size drift
+    } else if (type < 0.58) {
+      // Hue drift — biased
       const i = Math.floor(rng() * NODE_COUNT);
       const n = nodes[i];
-      n.size = Math.max(1.0, Math.min(8.0, n.size + rngSign() * SIZE_DRIFT));
+      const dir = rng() < DRIFT_BIAS ? n.hueBias : -n.hueBias;
+      n.hue += dir * HUE_DRIFT * rngRange(0.5, 2.0);
+    } else if (type < 0.72) {
+      // Size drift — biased
+      const i = Math.floor(rng() * NODE_COUNT);
+      const n = nodes[i];
+      const dir = rng() < DRIFT_BIAS ? n.sizeBias : -n.sizeBias;
+      n.size = Math.max(1.2, Math.min(7.0, n.size + dir * SIZE_DRIFT));
     } else if (type < 0.85) {
       // Edge opacity drift
       if (edges.length > 0) {
         const i = Math.floor(rng() * edges.length);
         const e = edges[i];
-        e.opacity = Math.max(0.02, Math.min(0.5, e.opacity + rngSign() * LINE_DRIFT));
+        e.opacity = Math.max(0.03, Math.min(0.55, e.opacity + rngSign() * LINE_DRIFT));
       }
     } else {
-      // Edge curve drift
+      // Edge curve drift — biased
       if (edges.length > 0) {
         const i = Math.floor(rng() * edges.length);
-        edges[i].curve += rngSign() * CURVE_DRIFT;
-        edges[i].curve = Math.max(-spacing * 0.3, Math.min(spacing * 0.3, edges[i].curve));
+        const e = edges[i];
+        const dir = rng() < DRIFT_BIAS ? e.curveBias : -e.curveBias;
+        e.curve += dir * CURVE_DRIFT;
+        e.curve = Math.max(-spacing * 0.4, Math.min(spacing * 0.4, e.curve));
       }
     }
     totalMutations++;
@@ -203,140 +212,119 @@ canvas { display: block; }
 
   // --- Rendering ---
   function hsl(h, s, l, a) {
-    return `hsla(${h % 360}, ${s}%, ${l}%, ${a})`;
+    return `hsla(${((h % 360) + 360) % 360}, ${s}%, ${l}%, ${a})`;
   }
 
-  function drawState(nodeSet, edgeSet, offsetX, alpha, scale) {
-    ctx.save();
-    if (scale !== 1) {
-      ctx.translate(offsetX + W * 0.25 * (scale < 1 ? 1 : 0), H / 2);
-      ctx.scale(scale, scale);
-      ctx.translate(-(offsetX + W * 0.25 * (scale < 1 ? 1 : 0)), -H / 2);
-    }
-
+  function drawNetwork(nodeSet, edgeSet, ox, oy, scale, alpha) {
     // Draw edges
     for (const e of edgeSet) {
       const na = nodeSet[e.a];
       const nb = nodeSet[e.b];
       if (!na || !nb) continue;
 
-      const ax = na.x + offsetX;
-      const ay = na.y;
-      const bx = nb.x + offsetX;
-      const by = nb.y;
+      const ax = ox + (na.x - W / 2) * scale + W / 2;
+      const ay = oy + (na.y - H / 2) * scale + H / 2;
+      const bx = ox + (nb.x - W / 2) * scale + W / 2;
+      const by = oy + (nb.y - H / 2) * scale + H / 2;
 
       const midX = (ax + bx) / 2;
       const midY = (ay + by) / 2;
-      // Perpendicular offset for curve
-      const dx = bx - ax;
-      const dy = by - ay;
-      const len = Math.sqrt(dx*dx + dy*dy) || 1;
-      const nx = -dy / len;
-      const ny = dx / len;
-      const cpx = midX + nx * e.curve;
-      const cpy = midY + ny * e.curve;
+      const edx = bx - ax;
+      const edy = by - ay;
+      const len = Math.sqrt(edx * edx + edy * edy) || 1;
+      const nx = -edy / len;
+      const ny = edx / len;
+      const cpx = midX + nx * e.curve * scale;
+      const cpy = midY + ny * e.curve * scale;
 
       const avgHue = (na.hue + nb.hue) / 2;
 
       ctx.beginPath();
       ctx.moveTo(ax, ay);
       ctx.quadraticCurveTo(cpx, cpy, bx, by);
-      ctx.strokeStyle = hsl(avgHue, 30, 50, e.opacity * alpha);
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = hsl(avgHue, 35, 55, e.opacity * alpha);
+      ctx.lineWidth = 1 * scale;
       ctx.stroke();
     }
 
     // Draw nodes
     for (const n of nodeSet) {
-      const x = n.x + offsetX;
-      const y = n.y;
+      const x = ox + (n.x - W / 2) * scale + W / 2;
+      const y = oy + (n.y - H / 2) * scale + H / 2;
+      const sz = n.size * scale;
 
       // Glow
-      const grad = ctx.createRadialGradient(x, y, 0, x, y, n.size * 4);
-      grad.addColorStop(0, hsl(n.hue, n.sat, n.bri, 0.15 * alpha));
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, sz * 4);
+      grad.addColorStop(0, hsl(n.hue, n.sat, n.bri, 0.18 * alpha));
       grad.addColorStop(1, hsl(n.hue, n.sat, n.bri, 0));
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(x, y, n.size * 4, 0, Math.PI * 2);
+      ctx.arc(x, y, sz * 4, 0, Math.PI * 2);
       ctx.fill();
 
       // Core
-      ctx.fillStyle = hsl(n.hue, n.sat, n.bri, 0.8 * alpha);
+      ctx.fillStyle = hsl(n.hue, n.sat, n.bri, 0.85 * alpha);
       ctx.beginPath();
-      ctx.arc(x, y, n.size, 0, Math.PI * 2);
+      ctx.arc(x, y, sz, 0, Math.PI * 2);
       ctx.fill();
     }
-
-    ctx.restore();
   }
 
   function drawDrifting() {
-    ctx.fillStyle = 'rgba(10, 10, 12, 1)';
+    ctx.fillStyle = '#0a0a0c';
     ctx.fillRect(0, 0, W, H);
-    drawState(nodes, edges, 0, 1, 1);
+    drawNetwork(nodes, edges, 0, 0, 1, 1);
   }
 
   function drawReveal(progress) {
-    ctx.fillStyle = 'rgba(10, 10, 12, 1)';
+    ctx.fillStyle = '#0a0a0c';
     ctx.fillRect(0, 0, W, H);
 
     const fadeIn = Math.min(1, progress / (FADE_IN_DURATION / REVEAL_DURATION));
-    const fadeOut = progress > 0.7 ? 1 - ((progress - 0.7) / 0.3) : 1;
+    const fadeOut = progress > 0.75 ? 1 - ((progress - 0.75) / 0.25) : 1;
     const alpha = Math.min(fadeIn, fadeOut);
 
-    // Draw divider
-    ctx.strokeStyle = `rgba(100, 100, 120, ${0.15 * alpha})`;
+    // Divider
+    ctx.strokeStyle = `rgba(100, 100, 120, ${0.2 * alpha})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(W / 2, H * 0.05);
-    ctx.lineTo(W / 2, H * 0.95);
+    ctx.moveTo(W / 2, H * 0.03);
+    ctx.lineTo(W / 2, H * 0.97);
     ctx.stroke();
 
     // Labels
-    ctx.fillStyle = `rgba(150, 150, 170, ${0.3 * alpha})`;
+    ctx.fillStyle = `rgba(150, 150, 170, ${0.35 * alpha})`;
     ctx.font = '10px Courier New';
     ctx.textAlign = 'center';
-    ctx.fillText('ORIGINAL', W * 0.25, H * 0.04);
-    ctx.fillText('CURRENT', W * 0.75, H * 0.04);
-    ctx.fillText(`${totalMutations} mutations`, W * 0.5, H * 0.97);
+    ctx.fillText('ORIGINAL', W * 0.25, H * 0.035);
+    ctx.fillText('CURRENT', W * 0.75, H * 0.035);
+    ctx.fillText(`${totalMutations} mutations`, W * 0.5, H * 0.975);
 
-    // Scale factor for side-by-side
-    const scale = 0.48;
+    const scale = 0.44;
 
-    // Original (left) — need to offset positions to left half
+    // Original (left half)
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, 0, W / 2, H);
+    ctx.rect(0, 0, W / 2 - 1, H);
     ctx.clip();
-    const origShifted = originalNodes.map(n => ({
-      ...n,
-      x: W * 0.25 + (n.x - W / 2) * scale,
-      y: H / 2 + (n.y - H / 2) * scale
-    }));
-    drawState(origShifted, edges, 0, alpha, 1);
+    drawNetwork(originalNodes, originalEdges, -W * 0.25, 0, scale, alpha);
     ctx.restore();
 
-    // Current (right)
+    // Current (right half)
     ctx.save();
     ctx.beginPath();
-    ctx.rect(W / 2, 0, W / 2, H);
+    ctx.rect(W / 2 + 1, 0, W / 2, H);
     ctx.clip();
-    const currShifted = nodes.map(n => ({
-      ...n,
-      x: W * 0.75 + (n.x - W / 2) * scale,
-      y: H / 2 + (n.y - H / 2) * scale
-    }));
-    drawState(currShifted, edges, 0, alpha, 1);
+    drawNetwork(nodes, edges, W * 0.25, 0, scale, alpha);
     ctx.restore();
   }
 
-  // --- Status ---
   function updateStatus() {
     if (phase === 'drifting') {
       const elapsed = ((performance.now() - cycleStart) / 1000).toFixed(0);
       statusEl.textContent = `mutations: ${totalMutations} | elapsed: ${elapsed}s`;
     } else {
-      statusEl.textContent = `comparing · ${totalMutations} mutations applied`;
+      statusEl.textContent = `comparing · ${totalMutations} mutations`;
     }
   }
 
@@ -349,7 +337,6 @@ canvas { display: block; }
     lastTime = now;
 
     if (phase === 'drifting') {
-      // Apply mutations based on elapsed time
       mutationAccum += (dt / 1000) * MUTATIONS_PER_SECOND;
       const count = Math.floor(mutationAccum);
       mutationAccum -= count;
@@ -357,7 +344,6 @@ canvas { display: block; }
 
       drawDrifting();
 
-      // Check if cycle complete
       if (now - cycleStart >= CYCLE_DURATION) {
         phase = 'revealing';
         revealStart = now;
@@ -365,7 +351,6 @@ canvas { display: block; }
     } else if (phase === 'revealing') {
       const progress = (now - revealStart) / REVEAL_DURATION;
       if (progress >= 1) {
-        // Start new cycle from current state
         resetCycle();
       } else {
         drawReveal(progress);
@@ -378,15 +363,12 @@ canvas { display: block; }
 
   // --- Init ---
   async function init() {
-    // Try to fetch block hash for seeding
     let hashStr = Date.now().toString();
     try {
       const resp = await fetch('https://api.whatsonchain.com/v1/bsv/main/chain/info');
       const data = await resp.json();
       if (data.bestblockhash) hashStr = data.bestblockhash;
-    } catch(e) {
-      // Fallback to timestamp
-    }
+    } catch(e) {}
 
     initSeed(hashStr);
     initNodes();
