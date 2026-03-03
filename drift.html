@@ -469,9 +469,10 @@ canvas { display: block; }
     requestAnimationFrame(frame);
   }
 
-  // Save on tab close
+  // Save on tab close (unless resetting)
+  let resetting = false;
   window.addEventListener('beforeunload', function() {
-    if (nodes.length) saveState();
+    if (nodes.length && !resetting) saveState();
   });
 
   // Keyboard: space = hold to see ghost, r = reset
@@ -481,6 +482,7 @@ canvas { display: block; }
       ghostHeld = true;
     }
     if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
+      resetting = true;
       try { localStorage.removeItem(STORE_KEY); } catch(x) {}
       location.reload();
     }
