@@ -141,6 +141,8 @@ canvas { display: block; }
   let phase = 'drifting';
   let revealStart = 0;
   let mutationAccum = 0;
+  let ghostHeld = false;
+  let ghostAlpha = 0;
 
   function createNode(col, row) {
     const a = rngRange(0, Math.PI * 2);
@@ -304,12 +306,45 @@ canvas { display: block; }
     }
   }
 
+  function drawGhostOverlay(ga) {
+    // Ghost origin underneath
+    drawNetwork(originalNodes, originalEdges, W / 2, H / 2, 1, 0.22 * ga);
+    // Migration trails
+    for (let i = 0; i < NODE_COUNT; i++) {
+      const o = originalNodes[i];
+      const n = nodes[i];
+      const dx = n.x - o.x, dy = n.y - o.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 3) {
+        const t = Math.min(1, dist / (spacing * 0.5));
+        ctx.beginPath();
+        ctx.moveTo(o.x, o.y);
+        ctx.lineTo(n.x, n.y);
+        ctx.strokeStyle = `rgba(180, 180, 200, ${t * 0.09 * ga})`;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+  }
+
   function drawDrifting() {
     ctx.fillStyle = '#0a0a0c';
     ctx.fillRect(0, 0, W, H);
     const elapsed = performance.now() - cycleStart;
     const alpha = Math.min(1, elapsed / DRIFT_FADE_IN);
+
+    // Ghost overlay (hold space)
+    if (ghostAlpha > 0.001) drawGhostOverlay(ghostAlpha * alpha);
+
     drawNetwork(nodes, edges, W / 2, H / 2, 1, alpha);
+
+    // Mutation count while ghost is visible
+    if (ghostAlpha > 0.3) {
+      ctx.fillStyle = `rgba(150, 150, 170, ${0.3 * ghostAlpha})`;
+      ctx.font = '10px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${totalMutations} mutations since origin`, W / 2, H * 0.975);
+    }
   }
 
   function drawReveal(progress) {
@@ -321,29 +356,10 @@ canvas { display: block; }
     const fadeOut = progress > 0.8 ? 1 - ((progress - 0.8) / 0.2) : 1;
     const alpha = Math.min(fadeIn, fadeOut);
 
-    // Ghost origin underneath — faint shadow of where everything started
-    drawNetwork(originalNodes, originalEdges, W / 2, H / 2, 1, 0.22 * alpha);
+    // Ghost origin + migration trails
+    drawGhostOverlay(alpha);
 
-    // Migration trails — lines connecting ghost positions to current positions
-    // Opacity scales with drift distance: barely-moved nodes are invisible,
-    // heavily-drifted nodes show clear vectors
-    for (let i = 0; i < NODE_COUNT; i++) {
-      const o = originalNodes[i];
-      const n = nodes[i];
-      const dx = n.x - o.x, dy = n.y - o.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 3) {
-        const t = Math.min(1, dist / (spacing * 0.5));
-        ctx.beginPath();
-        ctx.moveTo(o.x, o.y);
-        ctx.lineTo(n.x, n.y);
-        ctx.strokeStyle = `rgba(180, 180, 200, ${t * 0.09 * alpha})`;
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
-      }
-    }
-
-    // Current grid on top — the living, drifted state
+    // Current grid on top
     drawNetwork(nodes, edges, W / 2, H / 2, 1, alpha);
 
     // Mutation count
@@ -369,6 +385,13 @@ canvas { display: block; }
     if (!lastTime) lastTime = now;
     const dt = now - lastTime;
     lastTime = now;
+
+    // Smooth ghost alpha toward target
+    const ghostTarget = ghostHeld ? 1 : 0;
+    if (ghostAlpha < ghostTarget)
+      ghostAlpha = Math.min(1, ghostAlpha + dt / 300);
+    else if (ghostAlpha > ghostTarget)
+      ghostAlpha = Math.max(0, ghostAlpha - dt / 400);
 
     if (phase === 'drifting') {
       mutationAccum += (dt / 1000) * MUTATIONS_PER_SECOND;
@@ -451,12 +474,19 @@ canvas { display: block; }
     if (nodes.length) saveState();
   });
 
-  // Reset with 'r' key
+  // Keyboard: space = hold to see ghost, r = reset
   window.addEventListener('keydown', function(e) {
+    if (e.key === ' ') {
+      e.preventDefault();
+      ghostHeld = true;
+    }
     if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
       try { localStorage.removeItem(STORE_KEY); } catch(x) {}
       location.reload();
     }
+  });
+  window.addEventListener('keyup', function(e) {
+    if (e.key === ' ') ghostHeld = false;
   });
 
   init();
