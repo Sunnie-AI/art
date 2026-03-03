@@ -52,8 +52,8 @@ canvas { display: block; }
   const CURVE_DRIFT = 0.5;
   const DRIFT_BIAS = 0.78;
 
-  const ORIGIN_SEED = 'DRIFT-v1';
-  const STORE_KEY = 'drift-v1';
+  const ORIGIN_SEED = 'DRIFT-v2';
+  const STORE_KEY = 'drift-v2';
 
   // --- Canvas setup ---
   let W, H, spacing, marginX, marginY;
@@ -153,9 +153,9 @@ canvas { display: block; }
     const a = rngRange(0, Math.PI * 2);
     return {
       x: gridX(col), y: gridY(row),
-      baseHue: rngRange(200, 260), hue: 0,
-      sat: rngRange(35, 65), bri: rngRange(60, 85),
-      size: rngRange(2.5, 4.5), col, row,
+      baseHue: rngRange(170, 310), hue: 0,
+      sat: rngRange(30, 70), bri: rngRange(55, 90),
+      size: rngRange(1.8, 5.5), col, row,
       driftDx: Math.cos(a), driftDy: Math.sin(a),
       hueBias: rngSign(), sizeBias: rngSign()
     };
