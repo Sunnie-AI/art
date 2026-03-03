@@ -39,14 +39,14 @@ canvas { display: block; }
   const ROWS = 6;
   const NODE_COUNT = COLS * ROWS;
   const CYCLE_DURATION = 45000;    // ms before reveal
-  const REVEAL_DURATION = 3500;    // ms showing comparison
+  const REVEAL_DURATION = 4500;    // ms showing ghost overlay
   const FADE_IN_DURATION = 600;
   const DRIFT_FADE_IN = 800;       // fade-in at start of each drift cycle
   const MUTATIONS_PER_SECOND = 30;
 
   // Mutation magnitudes
   const POS_DRIFT = 2.0;
-  const HUE_DRIFT = 1.2;
+  const HUE_DRIFT = 2.5;
   const SIZE_DRIFT = 0.08;
   const LINE_DRIFT = 0.01;
   const CURVE_DRIFT = 0.5;
@@ -316,41 +316,41 @@ canvas { display: block; }
     ctx.fillStyle = '#0a0a0c';
     ctx.fillRect(0, 0, W, H);
 
-    const fadeIn = Math.min(1, progress / (FADE_IN_DURATION / REVEAL_DURATION));
-    const fadeOut = progress > 0.75 ? 1 - ((progress - 0.75) / 0.25) : 1;
+    // Envelope: fade in first 15%, hold, fade out last 20%
+    const fadeIn = Math.min(1, progress / 0.15);
+    const fadeOut = progress > 0.8 ? 1 - ((progress - 0.8) / 0.2) : 1;
     const alpha = Math.min(fadeIn, fadeOut);
 
-    // Divider
-    ctx.strokeStyle = `rgba(100, 100, 120, ${0.2 * alpha})`;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(W / 2, H * 0.03);
-    ctx.lineTo(W / 2, H * 0.97);
-    ctx.stroke();
+    // Ghost origin underneath — faint shadow of where everything started
+    drawNetwork(originalNodes, originalEdges, W / 2, H / 2, 1, 0.22 * alpha);
 
-    // Labels
-    ctx.fillStyle = `rgba(150, 150, 170, ${0.35 * alpha})`;
+    // Migration trails — lines connecting ghost positions to current positions
+    // Opacity scales with drift distance: barely-moved nodes are invisible,
+    // heavily-drifted nodes show clear vectors
+    for (let i = 0; i < NODE_COUNT; i++) {
+      const o = originalNodes[i];
+      const n = nodes[i];
+      const dx = n.x - o.x, dy = n.y - o.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 3) {
+        const t = Math.min(1, dist / (spacing * 0.5));
+        ctx.beginPath();
+        ctx.moveTo(o.x, o.y);
+        ctx.lineTo(n.x, n.y);
+        ctx.strokeStyle = `rgba(180, 180, 200, ${t * 0.09 * alpha})`;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+
+    // Current grid on top — the living, drifted state
+    drawNetwork(nodes, edges, W / 2, H / 2, 1, alpha);
+
+    // Mutation count
+    ctx.fillStyle = `rgba(150, 150, 170, ${0.3 * alpha})`;
     ctx.font = '10px Courier New';
     ctx.textAlign = 'center';
-    ctx.fillText('ORIGIN', W * 0.25, H * 0.035);
-    ctx.fillText('CURRENT', W * 0.75, H * 0.035);
-    ctx.fillText(`session ${sessionCount} \u00b7 ${totalMutations} mutations`, W * 0.5, H * 0.975);
-
-    const scale = 0.44;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, W / 2 - 1, H);
-    ctx.clip();
-    drawNetwork(originalNodes, originalEdges, W * 0.25, H / 2, scale, alpha);
-    ctx.restore();
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(W / 2 + 1, 0, W / 2, H);
-    ctx.clip();
-    drawNetwork(nodes, edges, W * 0.75, H / 2, scale, alpha);
-    ctx.restore();
+    ctx.fillText(`session ${sessionCount} \u00b7 ${totalMutations} mutations`, W / 2, H * 0.975);
   }
 
   function updateStatus() {
@@ -358,7 +358,7 @@ canvas { display: block; }
       const t = ((performance.now() - cycleStart) / 1000) | 0;
       statusEl.textContent = `session ${sessionCount} \u00b7 mutations: ${totalMutations} \u00b7 ${t}s`;
     } else {
-      statusEl.textContent = `session ${sessionCount} \u00b7 ${totalMutations} mutations since origin`;
+      statusEl.textContent = '';
     }
   }
 
