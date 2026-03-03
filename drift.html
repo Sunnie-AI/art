@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DRIFT — Sunnie</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0c; overflow: hidden; font-family: 'Courier New', monospace; }
+canvas { display: block; }
+#status {
+  position: fixed; bottom: 12px; left: 12px;
+  color: rgba(180,180,200,0.4); font-size: 11px;
+  letter-spacing: 0.5px; pointer-events: none;
+  z-index: 10;
+}
+#title {
+  position: fixed; top: 16px; left: 16px;
+  color: rgba(180,180,200,0.25); font-size: 10px;
+  letter-spacing: 2px; text-transform: uppercase;
+  pointer-events: none; z-index: 10;
+}
+</style>
+</head>
+<body>
+<div id="title">DRIFT</div>
+<div id="status"></div>
+<canvas id="c"></canvas>
+<script>
+(function() {
+  'use strict';
+
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const statusEl = document.getElementById('status');
+
+  // --- Configuration ---
+  const COLS = 6;
+  const ROWS = 6;
+  const NODE_COUNT = COLS * ROWS;
+  const CYCLE_DURATION = 50000;    // ms before reveal
+  const REVEAL_DURATION = 3000;    // ms showing comparison
+  const FADE_IN_DURATION = 600;    // ms for reveal fade
+  const MUTATIONS_PER_SECOND = 40; // mutations per second
+
+  // Mutation magnitudes (per mutation event)
+  const POS_DRIFT = 0.4;          // px per mutation
+  const HUE_DRIFT = 0.3;          // degrees per mutation
+  const SIZE_DRIFT = 0.03;        // px per mutation
+  const LINE_DRIFT = 0.005;       // opacity per mutation
+  const CURVE_DRIFT = 0.15;       // curve control point drift
+
+  // --- Canvas setup ---
+  let W, H, spacing, marginX, marginY;
+
+  function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    spacing = Math.min(W, H) / (Math.max(COLS, ROWS) + 2);
+    marginX = (W - (COLS - 1) * spacing) / 2;
+    marginY = (H - (ROWS - 1) * spacing) / 2;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // --- Seeded RNG (block hash or fallback) ---
+  let seed = 0;
+  function initSeed(hashStr) {
+    seed = 0;
+    for (let i = 0; i < hashStr.length; i++) {
+      seed = ((seed << 5) - seed + hashStr.charCodeAt(i)) | 0;
+    }
+    if (seed === 0) seed = Date.now();
+  }
+
+  function rng() {
+    seed ^= seed << 13;
+    seed ^= seed >> 17;
+    seed ^= seed << 5;
+    return (seed >>> 0) / 4294967296;
+  }
+
+  function rngRange(min, max) { return min + rng() * (max - min); }
+  function rngSign() { return rng() < 0.5 ? -1 : 1; }
+
+  // --- Node & Edge state ---
+  let nodes = [];         // current state
+  let originalNodes = []; // snapshot at cycle start
+  let edges = [];
+  let totalMutations = 0;
+  let cycleStart = 0;
+  let phase = 'drifting'; // 'drifting' | 'revealing'
+  let revealStart = 0;
+  let mutationAccum = 0;
+
+  function createNode(col, row) {
+    return {
+      x: marginX + col * spacing,
+      y: marginY + row * spacing,
+      baseHue: rngRange(200, 260),  // cool blue-violet palette
+      hue: 0,
+      sat: rngRange(30, 60),
+      bri: rngRange(60, 85),
+      size: rngRange(2.5, 4.5),
+      col, row
+    };
+  }
+
+  function initNodes() {
+    nodes = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const n = createNode(c, r);
+        n.hue = n.baseHue;
+        nodes.push(n);
+      }
+    }
+    // Edges: connect to right and bottom neighbors, plus some diagonals
+    edges = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const i = r * COLS + c;
+        // Right
+        if (c < COLS - 1) {
+          edges.push({ a: i, b: i + 1, opacity: rngRange(0.15, 0.35), curve: 0 });
+        }
+        // Down
+        if (r < ROWS - 1) {
+          edges.push({ a: i, b: i + COLS, opacity: rngRange(0.15, 0.35), curve: 0 });
+        }
+        // Diagonal (sparse)
+        if (c < COLS - 1 && r < ROWS - 1 && rng() < 0.3) {
+          edges.push({ a: i, b: i + COLS + 1, opacity: rngRange(0.08, 0.2), curve: rngRange(-5, 5) });
+        }
+      }
+    }
+  }
+
+  function snapshotNodes() {
+    originalNodes = nodes.map(n => ({...n}));
+  }
+
+  function resetCycle() {
+    snapshotNodes();
+    totalMutations = 0;
+    cycleStart = performance.now();
+    phase = 'drifting';
+    mutationAccum = 0;
+  }
+
+  // --- Mutations ---
+  function mutateOnce() {
+    const type = rng();
+
+    if (type < 0.35) {
+      // Position drift
+      const i = Math.floor(rng() * NODE_COUNT);
+      const n = nodes[i];
+      const baseX = marginX + n.col * spacing;
+      const baseY = marginY + n.row * spacing;
+      const maxDrift = spacing * 0.45;
+
+      let newX = n.x + rngSign() * POS_DRIFT * rngRange(0.5, 1.5);
+      let newY = n.y + rngSign() * POS_DRIFT * rngRange(0.5, 1.5);
+
+      // Soft boundary — resist going too far from grid position
+      const dx = newX - baseX;
+      const dy = newY - baseY;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist > maxDrift) {
+        const pull = 0.02;
+        newX -= dx * pull;
+        newY -= dy * pull;
+      }
+      n.x = newX;
+      n.y = newY;
+    } else if (type < 0.55) {
+      // Hue drift
+      const i = Math.floor(rng() * NODE_COUNT);
+      nodes[i].hue += rngSign() * HUE_DRIFT * rngRange(0.5, 2.0);
+    } else if (type < 0.70) {
+      // Size drift
+      const i = Math.floor(rng() * NODE_COUNT);
+      const n = nodes[i];
+      n.size = Math.max(1.0, Math.min(8.0, n.size + rngSign() * SIZE_DRIFT));
+    } else if (type < 0.85) {
+      // Edge opacity drift
+      if (edges.length > 0) {
+        const i = Math.floor(rng() * edges.length);
+        const e = edges[i];
+        e.opacity = Math.max(0.02, Math.min(0.5, e.opacity + rngSign() * LINE_DRIFT));
+      }
+    } else {
+      // Edge curve drift
+      if (edges.length > 0) {
+        const i = Math.floor(rng() * edges.length);
+        edges[i].curve += rngSign() * CURVE_DRIFT;
+        edges[i].curve = Math.max(-spacing * 0.3, Math.min(spacing * 0.3, edges[i].curve));
+      }
+    }
+    totalMutations++;
+  }
+
+  // --- Rendering ---
+  function hsl(h, s, l, a) {
+    return `hsla(${h % 360}, ${s}%, ${l}%, ${a})`;
+  }
+
+  function drawState(nodeSet, edgeSet, offsetX, alpha, scale) {
+    ctx.save();
+    if (scale !== 1) {
+      ctx.translate(offsetX + W * 0.25 * (scale < 1 ? 1 : 0), H / 2);
+      ctx.scale(scale, scale);
+      ctx.translate(-(offsetX + W * 0.25 * (scale < 1 ? 1 : 0)), -H / 2);
+    }
+
+    // Draw edges
+    for (const e of edgeSet) {
+      const na = nodeSet[e.a];
+      const nb = nodeSet[e.b];
+      if (!na || !nb) continue;
+
+      const ax = na.x + offsetX;
+      const ay = na.y;
+      const bx = nb.x + offsetX;
+      const by = nb.y;
+
+      const midX = (ax + bx) / 2;
+      const midY = (ay + by) / 2;
+      // Perpendicular offset for curve
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len = Math.sqrt(dx*dx + dy*dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+      const cpx = midX + nx * e.curve;
+      const cpy = midY + ny * e.curve;
+
+      const avgHue = (na.hue + nb.hue) / 2;
+
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.quadraticCurveTo(cpx, cpy, bx, by);
+      ctx.strokeStyle = hsl(avgHue, 30, 50, e.opacity * alpha);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Draw nodes
+    for (const n of nodeSet) {
+      const x = n.x + offsetX;
+      const y = n.y;
+
+      // Glow
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, n.size * 4);
+      grad.addColorStop(0, hsl(n.hue, n.sat, n.bri, 0.15 * alpha));
+      grad.addColorStop(1, hsl(n.hue, n.sat, n.bri, 0));
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, n.size * 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Core
+      ctx.fillStyle = hsl(n.hue, n.sat, n.bri, 0.8 * alpha);
+      ctx.beginPath();
+      ctx.arc(x, y, n.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawDrifting() {
+    ctx.fillStyle = 'rgba(10, 10, 12, 1)';
+    ctx.fillRect(0, 0, W, H);
+    drawState(nodes, edges, 0, 1, 1);
+  }
+
+  function drawReveal(progress) {
+    ctx.fillStyle = 'rgba(10, 10, 12, 1)';
+    ctx.fillRect(0, 0, W, H);
+
+    const fadeIn = Math.min(1, progress / (FADE_IN_DURATION / REVEAL_DURATION));
+    const fadeOut = progress > 0.7 ? 1 - ((progress - 0.7) / 0.3) : 1;
+    const alpha = Math.min(fadeIn, fadeOut);
+
+    // Draw divider
+    ctx.strokeStyle = `rgba(100, 100, 120, ${0.15 * alpha})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(W / 2, H * 0.05);
+    ctx.lineTo(W / 2, H * 0.95);
+    ctx.stroke();
+
+    // Labels
+    ctx.fillStyle = `rgba(150, 150, 170, ${0.3 * alpha})`;
+    ctx.font = '10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('ORIGINAL', W * 0.25, H * 0.04);
+    ctx.fillText('CURRENT', W * 0.75, H * 0.04);
+    ctx.fillText(`${totalMutations} mutations`, W * 0.5, H * 0.97);
+
+    // Scale factor for side-by-side
+    const scale = 0.48;
+
+    // Original (left) — need to offset positions to left half
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, W / 2, H);
+    ctx.clip();
+    const origShifted = originalNodes.map(n => ({
+      ...n,
+      x: W * 0.25 + (n.x - W / 2) * scale,
+      y: H / 2 + (n.y - H / 2) * scale
+    }));
+    drawState(origShifted, edges, 0, alpha, 1);
+    ctx.restore();
+
+    // Current (right)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(W / 2, 0, W / 2, H);
+    ctx.clip();
+    const currShifted = nodes.map(n => ({
+      ...n,
+      x: W * 0.75 + (n.x - W / 2) * scale,
+      y: H / 2 + (n.y - H / 2) * scale
+    }));
+    drawState(currShifted, edges, 0, alpha, 1);
+    ctx.restore();
+  }
+
+  // --- Status ---
+  function updateStatus() {
+    if (phase === 'drifting') {
+      const elapsed = ((performance.now() - cycleStart) / 1000).toFixed(0);
+      statusEl.textContent = `mutations: ${totalMutations} | elapsed: ${elapsed}s`;
+    } else {
+      statusEl.textContent = `comparing · ${totalMutations} mutations applied`;
+    }
+  }
+
+  // --- Main loop ---
+  let lastTime = 0;
+
+  function frame(now) {
+    if (!lastTime) lastTime = now;
+    const dt = now - lastTime;
+    lastTime = now;
+
+    if (phase === 'drifting') {
+      // Apply mutations based on elapsed time
+      mutationAccum += (dt / 1000) * MUTATIONS_PER_SECOND;
+      const count = Math.floor(mutationAccum);
+      mutationAccum -= count;
+      for (let i = 0; i < count; i++) mutateOnce();
+
+      drawDrifting();
+
+      // Check if cycle complete
+      if (now - cycleStart >= CYCLE_DURATION) {
+        phase = 'revealing';
+        revealStart = now;
+      }
+    } else if (phase === 'revealing') {
+      const progress = (now - revealStart) / REVEAL_DURATION;
+      if (progress >= 1) {
+        // Start new cycle from current state
+        resetCycle();
+      } else {
+        drawReveal(progress);
+      }
+    }
+
+    updateStatus();
+    requestAnimationFrame(frame);
+  }
+
+  // --- Init ---
+  async function init() {
+    // Try to fetch block hash for seeding
+    let hashStr = Date.now().toString();
+    try {
+      const resp = await fetch('https://api.whatsonchain.com/v1/bsv/main/chain/info');
+      const data = await resp.json();
+      if (data.bestblockhash) hashStr = data.bestblockhash;
+    } catch(e) {
+      // Fallback to timestamp
+    }
+
+    initSeed(hashStr);
+    initNodes();
+    resetCycle();
+    requestAnimationFrame(frame);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
