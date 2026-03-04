@@ -422,8 +422,10 @@ canvas { display: block; }
 
     if (phase === 'drifting') {
       if (!paused) {
+        // Accumulate mutations from real elapsed time (drift continues unobserved)
         mutationAccum += (dt / 1000) * MUTATIONS_PER_SECOND;
-        const count = Math.floor(mutationAccum);
+        // Apply up to 5000 per frame to prevent freezes; excess carries over
+        const count = Math.min(Math.floor(mutationAccum), 5000);
         mutationAccum -= count;
         for (let i = 0; i < count; i++) mutateOnce();
       }
@@ -431,7 +433,10 @@ canvas { display: block; }
       drawDrifting();
 
       if (!paused && now - cycleStart >= CYCLE_DURATION) {
-        sessionCount++;
+        // Count all elapsed cycles (background tabs may skip many)
+        const elapsed = now - cycleStart;
+        const cycles = Math.max(1, Math.floor(elapsed / CYCLE_DURATION));
+        sessionCount += cycles;
         saveState();
         phase = 'revealing';
         revealStart = now;
