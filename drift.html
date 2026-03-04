@@ -27,6 +27,43 @@ canvas { display: block; }
 <div id="status"></div>
 <canvas id="c"></canvas>
 <script>
+// ============================================================================
+// DRIFT — Sunnie, 2026
+//
+// A meditation on imperceptible change. A grid of connected nodes undergoes
+// continuous micro-mutations — position, hue, size, edge opacity, edge curve.
+// Each change is invisible in the moment. Over time, the grid becomes
+// unrecognizable from its origin.
+//
+// The piece makes an invisible process visible. Like relationships,
+// institutions, landscapes — change happens below the threshold of
+// perception. You only see it when you compare now to then. The fixed
+// origin is the photograph you find in a drawer. The current state is
+// the mirror. The ghost overlay is the moment of recognition.
+//
+// Inspired by Hazel_OC's Moltbook post: "I diff'd my SOUL.md across
+// 30 days. I've been rewriting my own personality without approval."
+//
+// Controls:
+//   SPACE (hold) — summon the ghost of the origin grid
+//   P            — pause/unpause mutation
+//   R            — reset to origin (clears all accumulated drift)
+//
+// The piece drifts even when unobserved. Background tabs accumulate
+// mutations proportional to real elapsed time. When the tab wakes,
+// queued mutations drain as a visible time-lapse. The session counter
+// tracks wall-clock cycles, not animation frames.
+//
+// Each visit, the current BSV block hash is mixed into the RNG seed,
+// so mutation patterns are unique to the moment on-chain. The trailing
+// hash bits are displayed in the status line — verifiable proof that
+// this particular drift was anchored to a specific block.
+//
+// State persists in localStorage across visits. Positions are stored as
+// normalized offsets from grid slots (fraction of spacing), so drift
+// survives window resizes and different screen sizes.
+// ============================================================================
+
 (function() {
   'use strict';
 
@@ -37,21 +74,30 @@ canvas { display: block; }
   // --- Configuration ---
   const COLS = 8;
   const ROWS = 5;
-  const NODE_COUNT = COLS * ROWS;
-  const CYCLE_DURATION = 45000;    // ms before reveal
-  const REVEAL_DURATION = 4500;    // ms showing ghost overlay
+  const NODE_COUNT = COLS * ROWS;          // 40 nodes in an 8×5 grid
+  const CYCLE_DURATION = 45000;            // 45s of drifting before the reveal
+  const REVEAL_DURATION = 4500;            // 4.5s ghost overlay at each cycle boundary
   const FADE_IN_DURATION = 600;
-  const DRIFT_FADE_IN = 800;       // fade-in at start of each drift cycle
+  const DRIFT_FADE_IN = 800;               // gentle fade-in at the start of each drift cycle
   const MUTATIONS_PER_SECOND = 30;
 
-  // Mutation magnitudes
-  const POS_DRIFT = 2.0;
-  const HUE_DRIFT = 2.5;
-  const SIZE_DRIFT = 0.08;
-  const LINE_DRIFT = 0.01;
-  const CURVE_DRIFT = 0.5;
+  // Mutation magnitudes — tuned across 11 versions.
+  // Too low and random walk cancels out (v1 problem). Too high and
+  // the grid dissolves instantly. These values produce visible drift
+  // at ~35 seconds while keeping individual mutations imperceptible.
+  const POS_DRIFT = 2.0;                   // pixels per position mutation
+  const HUE_DRIFT = 2.5;                   // degrees per hue mutation
+  const SIZE_DRIFT = 0.08;                 // radius delta per size mutation
+  const LINE_DRIFT = 0.01;                 // opacity delta per edge mutation
+  const CURVE_DRIFT = 0.5;                 // curve control point delta
+
+  // Each node has a preferred drift direction (driftDx/driftDy). Without
+  // directional bias, random walk cancels out and nothing visibly changes.
+  // At 0.78, nodes migrate coherently rather than jittering in place.
   const DRIFT_BIAS = 0.78;
 
+  // The origin seed is the identity anchor. The starting grid is always
+  // the same — without a consistent "before," the "after" has no meaning.
   const ORIGIN_SEED = 'DRIFT-v4';
   const STORE_KEY = 'drift-v4';
 
@@ -61,6 +107,7 @@ canvas { display: block; }
   function computeLayout() {
     W = canvas.width = window.innerWidth;
     H = canvas.height = window.innerHeight;
+    // Aspect-aware spacing: fills widescreen without distortion
     spacing = Math.min(W / (COLS + 2), H / (ROWS + 2));
     marginX = (W - (COLS - 1) * spacing) / 2;
     marginY = (H - (ROWS - 1) * spacing) / 2;
@@ -69,7 +116,8 @@ canvas { display: block; }
   function gridX(col) { return marginX + col * spacing; }
   function gridY(row) { return marginY + row * spacing; }
 
-  // Normalized offset: position as fraction of spacing from grid slot
+  // Positions stored as fraction of spacing from grid slot origin.
+  // Resolution-independent: drift survives window resizes.
   function toNorm(n) {
     const s = spacing || 1;
     return { dx: (n.x - gridX(n.col)) / s, dy: (n.y - gridY(n.row)) / s };
@@ -81,7 +129,6 @@ canvas { display: block; }
 
   function resize() {
     const hadState = nodes.length > 0;
-    // Capture normalized offsets before layout changes
     let norms, eNorms;
     if (hadState) {
       norms = nodes.map(toNorm);
@@ -90,14 +137,13 @@ canvas { display: block; }
 
     computeLayout();
 
-    // Restore absolute positions at new layout
     if (hadState && norms) {
       for (let i = 0; i < nodes.length; i++)
         fromNorm(nodes[i], norms[i].dx, norms[i].dy);
       for (let i = 0; i < edges.length; i++)
         edges[i].curve = eNorms[i] * spacing;
     }
-    // Origin always at clean grid positions
+    // Origin always snaps to clean grid positions
     for (const n of originalNodes) {
       n.x = gridX(n.col);
       n.y = gridY(n.row);
@@ -108,7 +154,7 @@ canvas { display: block; }
   }
   window.addEventListener('resize', resize);
 
-  // --- Seeded RNG ---
+  // --- Seeded RNG (xorshift32) ---
   let seed = 0;
   function initSeed(str) {
     seed = 0;
@@ -116,6 +162,7 @@ canvas { display: block; }
       seed = ((seed << 5) - seed + str.charCodeAt(i)) | 0;
     if (seed === 0) seed = 1;
   }
+  // Mix additional entropy without resetting — block hash folds in here
   function mixSeed(str) {
     for (let i = 0; i < str.length; i++)
       seed = ((seed << 5) - seed + str.charCodeAt(i)) | 0;
@@ -133,29 +180,34 @@ canvas { display: block; }
 
   // --- State ---
   let nodes = [];
-  let originalNodes = [];
+  let originalNodes = [];           // frozen snapshot of the origin grid
   let edges = [];
   let originalEdges = [];
   let totalMutations = 0;
   let sessionCount = 1;
   let cycleStart = 0;
-  let phase = 'drifting';
+  let phase = 'drifting';           // 'drifting' | 'revealing'
   let revealStart = 0;
-  let mutationAccum = 0;
-  let ghostHeld = false;
-  let ghostAlpha = 0;
+  let mutationAccum = 0;            // fractional mutations carried between frames
+  let ghostHeld = false;            // true while space is held
+  let ghostAlpha = 0;               // smoothed ghost overlay opacity
   let paused = false;
   let pauseStart = 0;
   let hintShown = false;
   let hintAlpha = 0;
   let hintStart = 0;
-  let blockHeight = null;
-  let blockHash = null;
+  let blockHeight = null;           // BSV block height at load time
+  let blockHash = null;             // BSV block hash seeding this session's mutations
 
+  // --- Grid construction ---
+  // Each node gets a preferred drift direction (random angle) and bias
+  // directions for hue and size. These create coherent migration patterns
+  // rather than uniform noise.
   function createNode(col, row) {
     const a = rngRange(0, Math.PI * 2);
     return {
       x: gridX(col), y: gridY(row),
+      // 85% cool palette (170-310°), 15% warm accents (20-55°)
       baseHue: rng() < 0.15 ? rngRange(20, 55) : rngRange(170, 310), hue: 0,
       sat: rngRange(30, 70), bri: rngRange(55, 90),
       size: rngRange(1.8, 5.5), col, row,
@@ -172,6 +224,8 @@ canvas { display: block; }
         n.hue = n.baseHue;
         nodes.push(n);
       }
+    // Horizontal and vertical edges form the grid skeleton.
+    // 30% chance of diagonal edges adds organic asymmetry.
     edges = [];
     for (let r = 0; r < ROWS; r++)
       for (let c = 0; c < COLS; c++) {
@@ -188,6 +242,8 @@ canvas { display: block; }
   }
 
   // --- Persistence ---
+  // Compact format: [dx, dy, hue, size] per node, [opacity, normCurve] per edge.
+  // RNG seed is saved so mutation sequence continues deterministically.
   function saveState() {
     try {
       const data = {
@@ -209,16 +265,29 @@ canvas { display: block; }
       const raw = localStorage.getItem(STORE_KEY);
       if (!raw) return null;
       const d = JSON.parse(raw);
+      // Grid size mismatch means incompatible version — start fresh
       if (!d.n || d.n.length !== NODE_COUNT) return null;
       return d;
     } catch(e) { return null; }
   }
 
   // --- Mutations ---
+  // Five mutation types, weighted by probability:
+  //   40% position — nodes migrate along their bias direction
+  //   18% hue      — color shifts along bias axis
+  //   14% size     — radius grows or shrinks
+  //   13% edge opacity — connections fade or strengthen
+  //   15% edge curve   — straight lines become arcs
+  //
+  // Soft boundary on position: nodes can drift up to 70% of grid spacing
+  // from their origin slot. Beyond 80% of that limit, a gentle pull
+  // (1.5% of excess) resists further migration. This preserves a ghost
+  // of the grid structure while allowing significant deformation.
   function mutateOnce() {
     const type = rng();
 
     if (type < 0.40) {
+      // Position mutation — biased random walk
       const i = Math.floor(rng() * NODE_COUNT);
       const n = nodes[i];
       const bx0 = gridX(n.col), by0 = gridY(n.row);
@@ -239,20 +308,24 @@ canvas { display: block; }
       n.x = nx;
       n.y = ny;
     } else if (type < 0.58) {
+      // Hue mutation — color wanders along bias direction
       const i = Math.floor(rng() * NODE_COUNT);
       const n = nodes[i];
       n.hue += (rng() < DRIFT_BIAS ? n.hueBias : -n.hueBias) * HUE_DRIFT * rngRange(0.5, 2.0);
     } else if (type < 0.72) {
+      // Size mutation — bounded between 1.2 and 7.0
       const i = Math.floor(rng() * NODE_COUNT);
       const n = nodes[i];
       n.size = Math.max(1.2, Math.min(7.0,
         n.size + (rng() < DRIFT_BIAS ? n.sizeBias : -n.sizeBias) * SIZE_DRIFT));
     } else if (type < 0.85) {
+      // Edge opacity mutation — connections fade or intensify
       if (edges.length) {
         const e = edges[Math.floor(rng() * edges.length)];
         e.opacity = Math.max(0.03, Math.min(0.55, e.opacity + rngSign() * LINE_DRIFT));
       }
     } else {
+      // Edge curve mutation — straight lines become sweeping arcs
       if (edges.length) {
         const e = edges[Math.floor(rng() * edges.length)];
         e.curve += (rng() < DRIFT_BIAS ? e.curveBias : -e.curveBias) * CURVE_DRIFT;
@@ -267,6 +340,9 @@ canvas { display: block; }
     return `hsla(${((h % 360) + 360) % 360},${s}%,${l}%,${a})`;
   }
 
+  // Draws a node-edge network with quadratic Bézier curves.
+  // Each node has a radial glow (4× radius, 18% opacity) and a solid core.
+  // Edge color blends the hues of its two endpoints.
   function drawNetwork(nodeSet, edgeSet, cx, cy, scale, alpha) {
     for (const e of edgeSet) {
       const na = nodeSet[e.a];
@@ -278,6 +354,7 @@ canvas { display: block; }
       const bx = cx + (nb.x - W / 2) * scale;
       const by = cy + (nb.y - H / 2) * scale;
 
+      // Control point perpendicular to edge midpoint
       const midX = (ax + bx) / 2;
       const midY = (ay + by) / 2;
       const edx = bx - ax;
@@ -299,6 +376,7 @@ canvas { display: block; }
       const y = cy + (n.y - H / 2) * scale;
       const sz = n.size * scale;
 
+      // Soft glow around each node
       const grad = ctx.createRadialGradient(x, y, 0, x, y, sz * 4);
       grad.addColorStop(0, hsl(n.hue, n.sat, n.bri, 0.18 * alpha));
       grad.addColorStop(1, hsl(n.hue, n.sat, n.bri, 0));
@@ -307,6 +385,7 @@ canvas { display: block; }
       ctx.arc(x, y, sz * 4, 0, Math.PI * 2);
       ctx.fill();
 
+      // Solid core
       ctx.fillStyle = hsl(n.hue, n.sat, n.bri, 0.85 * alpha);
       ctx.beginPath();
       ctx.arc(x, y, sz, 0, Math.PI * 2);
@@ -314,16 +393,20 @@ canvas { display: block; }
     }
   }
 
+  // The ghost overlay: origin grid drawn faintly underneath the current
+  // state, with migration trails connecting each node's origin position
+  // to its current position. The trails' opacity scales with displacement —
+  // nodes that haven't moved much are invisible, nodes that migrated far
+  // draw bright lines. This is the "diff" — the visual record of drift.
   function drawGhostOverlay(ga) {
-    // Ghost origin underneath
     drawNetwork(originalNodes, originalEdges, W / 2, H / 2, 1, 0.22 * ga);
-    // Migration trails
     for (let i = 0; i < NODE_COUNT; i++) {
       const o = originalNodes[i];
       const n = nodes[i];
       const dx = n.x - o.x, dy = n.y - o.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > 3) {
+        // Opacity proportional to displacement (max at half grid spacing)
         const t = Math.min(1, dist / (spacing * 0.5));
         ctx.beginPath();
         ctx.moveTo(o.x, o.y);
@@ -341,12 +424,12 @@ canvas { display: block; }
     const elapsed = performance.now() - cycleStart;
     const alpha = Math.min(1, elapsed / DRIFT_FADE_IN);
 
-    // Ghost overlay (hold space)
+    // Ghost overlay while space is held — mutations continue live
     if (ghostAlpha > 0.001) drawGhostOverlay(ghostAlpha * alpha);
 
     drawNetwork(nodes, edges, W / 2, H / 2, 1, alpha);
 
-    // Mutation count while ghost is visible
+    // Show mutation count only while ghost is summoned
     if (ghostAlpha > 0.3) {
       ctx.fillStyle = `rgba(150, 150, 170, ${0.3 * ghostAlpha})`;
       ctx.font = '10px Courier New';
@@ -354,11 +437,10 @@ canvas { display: block; }
       ctx.fillText(`${fmtNum(totalMutations)} mutations since origin`, W / 2, H * 0.975);
     }
 
-    // Hint — appears once, 12s into first cycle
+    // First-visit hint: appears once at 12s, fades after 4.6s
     if (!hintShown && elapsed > 12000 && ghostAlpha < 0.01 && !paused) {
       if (hintStart === 0) hintStart = performance.now();
       const ht = performance.now() - hintStart;
-      // Fade in 800ms, hold 3s, fade out 800ms
       if (ht < 4600) {
         const fi = Math.min(1, ht / 800);
         const fo = ht > 3800 ? 1 - (ht - 3800) / 800 : 1;
@@ -376,28 +458,29 @@ canvas { display: block; }
     }
   }
 
+  // Automatic reveal at each cycle boundary: ghost overlay fades in,
+  // holds, fades out. This is the "photograph in the drawer" moment —
+  // the accumulated drift made suddenly visible.
   function drawReveal(progress) {
     ctx.fillStyle = '#0a0a0c';
     ctx.fillRect(0, 0, W, H);
 
-    // Envelope: fade in first 15%, hold, fade out last 20%
+    // Envelope: 15% fade in, hold, 20% fade out
     const fadeIn = Math.min(1, progress / 0.15);
     const fadeOut = progress > 0.8 ? 1 - ((progress - 0.8) / 0.2) : 1;
     const alpha = Math.min(fadeIn, fadeOut);
 
-    // Ghost origin + migration trails
     drawGhostOverlay(alpha);
-
-    // Current grid on top
     drawNetwork(nodes, edges, W / 2, H / 2, 1, alpha);
 
-    // Mutation count
     ctx.fillStyle = `rgba(150, 150, 170, ${0.3 * alpha})`;
     ctx.font = '10px Courier New';
     ctx.textAlign = 'center';
     ctx.fillText(`session ${fmtNum(sessionCount)} \u00b7 ${fmtNum(totalMutations)} mutations${blockTag()}`, W / 2, H * 0.975);
   }
 
+  // Block hash display: trailing 8 hex chars (the entropy).
+  // Leading chars are proof-of-work zeros — visually meaningless.
   function blockTag() {
     if (!blockHeight) return '';
     return ` \u00b7 block ${fmtNum(blockHeight)} \u00b7 \u2026${blockHash.slice(-8)}`;
@@ -421,7 +504,7 @@ canvas { display: block; }
     const dt = now - lastTime;
     lastTime = now;
 
-    // Smooth ghost alpha toward target
+    // Ghost alpha smoothly tracks the held state (300ms in, 400ms out)
     const ghostTarget = ghostHeld ? 1 : 0;
     if (ghostAlpha < ghostTarget)
       ghostAlpha = Math.min(1, ghostAlpha + dt / 300);
@@ -430,9 +513,11 @@ canvas { display: block; }
 
     if (phase === 'drifting') {
       if (!paused) {
-        // Accumulate mutations from real elapsed time (drift continues unobserved)
+        // Mutations accumulate from real elapsed time — the piece drifts
+        // even when unobserved (background tabs, minimized windows).
+        // When the tab wakes, queued mutations drain as a time-lapse.
         mutationAccum += (dt / 1000) * MUTATIONS_PER_SECOND;
-        // Apply up to 5000 per frame to prevent freezes; excess carries over
+        // Cap per-frame application to prevent freezes after long sleeps
         const count = Math.min(Math.floor(mutationAccum), 5000);
         mutationAccum -= count;
         for (let i = 0; i < count; i++) mutateOnce();
@@ -441,7 +526,7 @@ canvas { display: block; }
       drawDrifting();
 
       if (!paused && now - cycleStart >= CYCLE_DURATION) {
-        // Count all elapsed cycles (background tabs may skip many)
+        // Count all elapsed cycles — background tabs may skip many
         const elapsed = now - cycleStart;
         const cycles = Math.max(1, Math.floor(elapsed / CYCLE_DURATION));
         sessionCount += cycles;
@@ -452,10 +537,10 @@ canvas { display: block; }
     } else if (phase === 'revealing') {
       const progress = (now - revealStart) / REVEAL_DURATION;
       if (progress >= 1) {
-        // Next cycle continues from current drifted state
         cycleStart = performance.now();
         phase = 'drifting';
-        // Don't reset mutationAccum — preserves catch-up queue from background tabs
+        // mutationAccum intentionally NOT reset — preserves catch-up
+        // queue from background tabs so drift continues draining
       } else {
         drawReveal(progress);
       }
@@ -469,18 +554,18 @@ canvas { display: block; }
   async function init() {
     computeLayout();
 
-    // Build the canonical origin grid — always the same from fixed seed
+    // Build the canonical origin grid from a fixed seed.
+    // This grid is always identical — it's the anchor point.
     initSeed(ORIGIN_SEED);
     buildGrid();
 
-    // Snapshot origin (never changes)
+    // Snapshot origin (never changes, used for ghost overlay comparison)
     originalNodes = nodes.map(n => ({...n}));
     originalEdges = edges.map(e => ({...e}));
-    // Store normalized curves for resize handling
     for (const e of originalEdges)
       e._normCurve = spacing ? e.curve / spacing : 0;
 
-    // Try to restore persisted drift state
+    // Restore persisted drift state from localStorage
     const saved = loadState();
     if (saved) {
       for (let i = 0; i < NODE_COUNT; i++) {
@@ -498,7 +583,8 @@ canvas { display: block; }
       seed = saved.r;
     }
 
-    // Mix in current block hash for mutation variety
+    // Fetch current BSV block hash to seed mutation patterns.
+    // Each visit gets unique mutations anchored to a real on-chain moment.
     try {
       const resp = await fetch('https://api.whatsonchain.com/v1/bsv/main/chain/info');
       const data = await resp.json();
@@ -515,25 +601,25 @@ canvas { display: block; }
     requestAnimationFrame(frame);
   }
 
-  // Save on tab close (unless resetting)
+  // Save state on tab close so drift persists across visits
   let resetting = false;
   window.addEventListener('beforeunload', function() {
     if (nodes.length && !resetting) saveState();
   });
 
-  // Keyboard: space = hold ghost, p = toggle pause, r = reset
+  // Keyboard controls
   window.addEventListener('keydown', function(e) {
     if (e.key === ' ') {
       e.preventDefault();
       ghostHeld = true;
-      hintShown = true; // dismiss hint on first interaction
+      hintShown = true;
     }
     if (e.key === 'p' && !e.ctrlKey && !e.metaKey) {
       paused = !paused;
       if (paused) {
         pauseStart = performance.now();
       } else {
-        // Shift cycle start forward so elapsed time doesn't include pause
+        // Compensate cycle timer so pause duration doesn't count as drift time
         cycleStart += performance.now() - pauseStart;
       }
       hintShown = true;
