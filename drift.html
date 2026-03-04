@@ -149,6 +149,8 @@ canvas { display: block; }
   let hintShown = false;
   let hintAlpha = 0;
   let hintStart = 0;
+  let blockHeight = null;
+  let blockHash = null;
 
   function createNode(col, row) {
     const a = rngRange(0, Math.PI * 2);
@@ -393,14 +395,19 @@ canvas { display: block; }
     ctx.fillStyle = `rgba(150, 150, 170, ${0.3 * alpha})`;
     ctx.font = '10px Courier New';
     ctx.textAlign = 'center';
-    ctx.fillText(`session ${fmtNum(sessionCount)} \u00b7 ${fmtNum(totalMutations)} mutations`, W / 2, H * 0.975);
+    ctx.fillText(`session ${fmtNum(sessionCount)} \u00b7 ${fmtNum(totalMutations)} mutations${blockTag()}`, W / 2, H * 0.975);
+  }
+
+  function blockTag() {
+    if (!blockHeight) return '';
+    return ` \u00b7 block ${fmtNum(blockHeight)} \u00b7 ${blockHash.slice(0, 8)}\u2026`;
   }
 
   function updateStatus() {
     if (phase === 'drifting') {
       const t = ((performance.now() - cycleStart) / 1000) | 0;
       const pauseTag = paused ? ' \u00b7 paused' : '';
-      statusEl.textContent = `session ${fmtNum(sessionCount)} \u00b7 mutations: ${fmtNum(totalMutations)} \u00b7 ${t}s${pauseTag}`;
+      statusEl.textContent = `session ${fmtNum(sessionCount)} \u00b7 mutations: ${fmtNum(totalMutations)}${blockTag()} \u00b7 ${t}s${pauseTag}`;
     } else {
       statusEl.textContent = '';
     }
@@ -495,7 +502,11 @@ canvas { display: block; }
     try {
       const resp = await fetch('https://api.whatsonchain.com/v1/bsv/main/chain/info');
       const data = await resp.json();
-      if (data.bestblockhash) mixSeed(data.bestblockhash);
+      if (data.bestblockhash) {
+        mixSeed(data.bestblockhash);
+        blockHash = data.bestblockhash;
+        blockHeight = data.headers;
+      }
     } catch(e) {}
 
     cycleStart = performance.now();
