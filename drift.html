@@ -400,7 +400,7 @@ canvas { display: block; }
 
   function blockTag() {
     if (!blockHeight) return '';
-    return ` \u00b7 block ${fmtNum(blockHeight)} \u00b7 ${blockHash.slice(0, 8)}\u2026`;
+    return ` \u00b7 block ${fmtNum(blockHeight)} \u00b7 \u2026${blockHash.slice(-8)}`;
   }
 
   function updateStatus() {
