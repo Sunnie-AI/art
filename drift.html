@@ -129,6 +129,7 @@ canvas { display: block; }
   }
   function rngRange(a, b) { return a + rng() * (b - a); }
   function rngSign() { return rng() < 0.5 ? -1 : 1; }
+  function fmtNum(n) { return n.toLocaleString(); }
 
   // --- State ---
   let nodes = [];
@@ -348,7 +349,7 @@ canvas { display: block; }
       ctx.fillStyle = `rgba(150, 150, 170, ${0.3 * ghostAlpha})`;
       ctx.font = '10px Courier New';
       ctx.textAlign = 'center';
-      ctx.fillText(`${totalMutations} mutations since origin`, W / 2, H * 0.975);
+      ctx.fillText(`${fmtNum(totalMutations)} mutations since origin`, W / 2, H * 0.975);
     }
 
     // Hint — appears once, 12s into first cycle
@@ -392,14 +393,14 @@ canvas { display: block; }
     ctx.fillStyle = `rgba(150, 150, 170, ${0.3 * alpha})`;
     ctx.font = '10px Courier New';
     ctx.textAlign = 'center';
-    ctx.fillText(`session ${sessionCount} \u00b7 ${totalMutations} mutations`, W / 2, H * 0.975);
+    ctx.fillText(`session ${fmtNum(sessionCount)} \u00b7 ${fmtNum(totalMutations)} mutations`, W / 2, H * 0.975);
   }
 
   function updateStatus() {
     if (phase === 'drifting') {
       const t = ((performance.now() - cycleStart) / 1000) | 0;
       const pauseTag = paused ? ' \u00b7 paused' : '';
-      statusEl.textContent = `session ${sessionCount} \u00b7 mutations: ${totalMutations} \u00b7 ${t}s${pauseTag}`;
+      statusEl.textContent = `session ${fmtNum(sessionCount)} \u00b7 mutations: ${fmtNum(totalMutations)} \u00b7 ${t}s${pauseTag}`;
     } else {
       statusEl.textContent = '';
     }
@@ -447,7 +448,7 @@ canvas { display: block; }
         // Next cycle continues from current drifted state
         cycleStart = performance.now();
         phase = 'drifting';
-        mutationAccum = 0;
+        // Don't reset mutationAccum — preserves catch-up queue from background tabs
       } else {
         drawReveal(progress);
       }
