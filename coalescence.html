@@ -501,33 +501,6 @@
     const particles = new THREE.Points(particleGeo, particleMat);
     scene.add(particles);
 
-    // === Attractor regeneration on breath ===
-    // Every few breath cycles, regenerate with slightly different b
-    let lastRegenBreath = 0;
-    const regenInterval = Math.PI * 8; // every ~4 full breaths
-
-    function maybeRegenerate(breathPhase) {
-        if (breathPhase - lastRegenBreath > regenInterval) {
-            lastRegenBreath = breathPhase;
-            const currentB = CONFIG.bBase + CONFIG.bBreathAmp * Math.sin(breathPhase);
-            const newData = generateAttractor(currentB);
-
-            // Smoothly blend positions
-            const pos = lineGeo.getAttribute('position').array;
-            for (let i = 0; i < pos.length; i++) {
-                pos[i] = pos[i] * 0.3 + (newData.positions[i] - center.x) * 0.7;
-            }
-
-            const spd = lineGeo.getAttribute('speed').array;
-            for (let i = 0; i < spd.length; i++) {
-                spd[i] = newData.speeds[i];
-            }
-
-            lineGeo.getAttribute('position').needsUpdate = true;
-            lineGeo.getAttribute('speed').needsUpdate = true;
-        }
-    }
-
     // === HUD updates ===
     const coherenceEl = document.getElementById('coherenceVal');
     const entropyEl = document.getElementById('entropyVal');
@@ -571,9 +544,6 @@
 
         // Subtle chromatic aberration pulse
         chromaPass.uniforms.strength.value = 0.001 + 0.001 * Math.sin(breathPhase * 0.5);
-
-        // Regenerate attractor occasionally
-        maybeRegenerate(breathPhase);
 
         // HUD
         if (Math.floor(elapsed * 10) % 2 === 0) {
