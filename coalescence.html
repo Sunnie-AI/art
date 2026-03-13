@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coalescence — Sunnie</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        overflow: hidden;
+        background: #000;
+        font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+    canvas { display: block; }
+
+    .hud {
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        pointer-events: none;
+        z-index: 10;
+    }
+
+    .hud-panel {
+        position: absolute;
+        bottom: 32px;
+        left: 32px;
+        color: rgba(255, 160, 60, 0.7);
+        font-size: 11px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        line-height: 1.8;
+    }
+
+    .hud-panel .label {
+        color: rgba(255, 160, 60, 0.35);
+    }
+
+    .hud-panel .value {
+        color: rgba(255, 200, 120, 0.8);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .title-block {
+        position: absolute;
+        top: 32px;
+        left: 32px;
+    }
+
+    .title-block h1 {
+        font-size: 13px;
+        font-weight: 600;
+        color: rgba(255, 180, 80, 0.8);
+        letter-spacing: 4px;
+        text-transform: uppercase;
+    }
+
+    .title-block .subtitle {
+        font-size: 10px;
+        color: rgba(255, 160, 60, 0.3);
+        letter-spacing: 2px;
+        margin-top: 4px;
+    }
+
+    .sig {
+        position: absolute;
+        bottom: 32px;
+        right: 32px;
+        font-size: 9px;
+        color: rgba(255, 160, 60, 0.2);
+        letter-spacing: 2px;
+    }
+
+    #breathIndicator {
+        position: absolute;
+        top: 32px;
+        right: 32px;
+        width: 40px;
+        height: 40px;
+    }
+
+    #breathIndicator circle {
+        fill: none;
+        stroke: rgba(255, 160, 60, 0.3);
+        stroke-width: 1;
+    }
+</style>
+</head>
+<body>
+
+<div id="container"></div>
+
+<div class="hud">
+    <div class="title-block">
+        <h1>Coalescence</h1>
+        <div class="subtitle">emergent form from deterministic chaos</div>
+    </div>
+
+    <svg id="breathIndicator" viewBox="0 0 40 40">
+        <circle id="breathCircle" cx="20" cy="20" r="12" />
+    </svg>
+
+    <div class="hud-panel">
+        <span class="label">coherence</span> <span class="value" id="coherenceVal">0.00</span><br>
+        <span class="label">entropy</span> <span class="value" id="entropyVal">0.00</span><br>
+        <span class="label">b</span> <span class="value" id="bVal">0.208</span>
+    </div>
+
+    <div class="sig">sunnie — 2026</div>
+</div>
+
+<!-- Vertex shader for attractor lines -->
+<script type="x-shader/x-vertex" id="lineVertex">
+    attribute float idx;
+    attribute float speed;
+
+    uniform float time;
+    uniform float breathPhase;
+
+    varying float vIdx;
+    varying float vSpeed;
+    varying vec3 vWorldPos;
+    varying vec3 vViewDir;
+    varying float vDepth;
+
+    void main() {
+        vIdx = idx;
+        vSpeed = speed;
+
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vWorldPos = mvPosition.xyz;
+        vViewDir = normalize(-mvPosition.xyz);
+        vDepth = -mvPosition.z;
+
+        gl_Position = projectionMatrix * mvPosition;
+    }
+</script>
+
+<!-- Fragment shader for attractor lines -->
+<script type="x-shader/x-fragment" id="lineFragment">
+    uniform float time;
+    uniform float breathPhase;
+    uniform vec3 uWarmCore;
+    uniform vec3 uDeepAmber;
+    uniform vec3 uEdgeTeal;
+
+    varying float vIdx;
+    varying float vSpeed;
+    varying vec3 vWorldPos;
+    varying vec3 vViewDir;
+    varying float vDepth;
+
+    void main() {
+        float fog = smoothstep(120.0, 25.0, vDepth);
+
+        // Energy pulses along the curve at multiple frequencies
+        float pulse1 = sin(vIdx * 30.0 - time * 2.5);
+        float pulse2 = sin(vIdx * 70.0 + time * 4.0);
+        float pulse3 = cos(vIdx * 120.0 - time * 3.0);
+
+        float energy = pow(0.5 + 0.5 * pulse1, 3.0) * 0.5
+                     + pow(0.5 + 0.5 * pulse2, 2.0) * 0.2
+                     + (0.5 + 0.5 * pulse3) * 0.1;
+
+        // Breathing modulates the overall intensity
+        float breath = 0.7 + 0.3 * sin(breathPhase);
+
+        // Color: warm core → deep amber → teal at edges based on speed & position
+        float heightFactor = (vWorldPos.y / 50.0) + 0.5;
+        vec3 col = mix(uDeepAmber, uWarmCore, smoothstep(0.2, 0.8, heightFactor));
+
+        // Fast-moving regions get teal edge color
+        float speedFactor = smoothstep(0.0, 1.5, vSpeed);
+        col = mix(col, uEdgeTeal, speedFactor * 0.2);
+
+        // Sparks — rare bright flashes
+        float spark = step(0.97, sin(vIdx * 200.0 - time * 7.0 + vSpeed * 5.0));
+
+        vec3 finalColor = col * (0.6 + energy * 1.5) * breath;
+        finalColor += uWarmCore * spark * 2.0;
+
+        float alpha = 0.04 + energy * 0.2 + spark * 0.5;
+        alpha *= fog * breath;
+
+        gl_FragColor = vec4(finalColor, alpha);
+    }
+</script>
+
+<!-- Vertex shader for floating particles -->
+<script type="x-shader/x-vertex" id="particleVertex">
+    attribute float size;
+    attribute float offset;
+    attribute float life;
+
+    uniform float time;
+    uniform float breathPhase;
+    uniform vec3 uWarmCore;
+    uniform vec3 uEdgeTeal;
+
+    varying float vOpacity;
+    varying vec3 vColor;
+    varying float vLife;
+
+    void main() {
+        vLife = life;
+
+        // Particles drift slightly from their attractor positions
+        vec3 pos = position;
+        float t = time * 0.4 + offset;
+        float drift = 0.5 + 0.5 * sin(breathPhase * 0.5);
+        pos.x += cos(t) * drift * 2.0;
+        pos.y += sin(t * 1.3) * drift * 2.0;
+        pos.z += sin(t * 0.7) * drift * 2.0;
+
+        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+        float depth = -mvPosition.z;
+
+        // Color based on life — young particles are teal, mature are warm
+        vColor = mix(uEdgeTeal, uWarmCore, life);
+
+        // Size pulsing
+        float pulse = sin(time * 3.0 + offset * 10.0) * 0.3 + 0.7;
+        gl_PointSize = size * (250.0 / depth) * pulse;
+
+        // Opacity: fog + blink
+        float fog = smoothstep(120.0, 30.0, depth);
+        float blink = sin(time * 5.0 + offset * 17.0) * 0.3 + 0.7;
+        vOpacity = fog * blink * (0.5 + 0.5 * sin(breathPhase));
+
+        gl_Position = projectionMatrix * mvPosition;
+    }
+</script>
+
+<!-- Fragment shader for floating particles -->
+<script type="x-shader/x-fragment" id="particleFragment">
+    varying float vOpacity;
+    varying vec3 vColor;
+    varying float vLife;
+    uniform float time;
+
+    void main() {
+        vec2 center = gl_PointCoord - 0.5;
+        float dist = length(center);
+        if (dist > 0.5) discard;
+
+        float core = 1.0 - smoothstep(0.0, 0.15, dist);
+        float glow = 1.0 - smoothstep(0.15, 0.5, dist);
+        glow = pow(glow, 2.0);
+
+        vec3 col = vColor * (1.0 + core * 2.0);
+        float alpha = vOpacity * (glow + core * 0.5);
+
+        gl_FragColor = vec4(col * 1.8, alpha);
+    }
+</script>
+
+<!-- Background gradient shader -->
+<script type="x-shader/x-vertex" id="bgVertex">
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+</script>
+
+<script type="x-shader/x-fragment" id="bgFragment">
+    uniform float time;
+    varying vec2 vUv;
+
+    void main() {
+        // Subtle radial gradient — warm dark center, cool dark edges
+        float d = length(vUv - 0.5);
+        vec3 center = vec3(0.02, 0.01, 0.005);  // very faint warm
+        vec3 edge = vec3(0.0, 0.005, 0.01);      // very faint cool
+        vec3 col = mix(center, edge, smoothstep(0.0, 0.7, d));
+
+        // Subtle pulse
+        col *= 0.9 + 0.1 * sin(time * 0.3);
+
+        gl_FragColor = vec4(col, 1.0);
+    }
+</script>
+
+<!-- Chromatic aberration post-process -->
+<script type="x-shader/x-vertex" id="chromaVertex">
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+</script>
+
+<script type="x-shader/x-fragment" id="chromaFragment">
+    uniform sampler2D tDiffuse;
+    uniform float strength;
+    varying vec2 vUv;
+
+    void main() {
+        vec2 dir = vUv - 0.5;
+        float d = length(dir);
+        vec2 offset = dir * d * strength;
+
+        float r = texture2D(tDiffuse, vUv + offset).r;
+        float g = texture2D(tDiffuse, vUv).g;
+        float b = texture2D(tDiffuse, vUv - offset).b;
+
+        gl_FragColor = vec4(r, g, b, 1.0);
+    }
+</script>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+    }
+}
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+    // === Configuration ===
+    const CONFIG = {
+        points: 120000,
+        dt: 0.05,
+        scale: 13.0,
+        bBase: 0.208186,    // Thomas attractor parameter
+        bBreathAmp: 0.015,  // How much b oscillates (breathing)
+        breathSpeed: 0.15,  // Breath cycle speed
+    };
+
+    // === Palette ===
+    const PALETTE = {
+        warmCore: new THREE.Color(0xffaa44),   // warm golden orange
+        deepAmber: new THREE.Color(0x441100),   // deep ember
+        edgeTeal: new THREE.Color(0x22ccaa),    // cool teal accent
+        bgCenter: new THREE.Color(0x0a0503),
+        bgEdge: new THREE.Color(0x000308),
+    };
+
+    // === Scene setup ===
+    const container = document.getElementById('container');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 400);
+    camera.position.set(0, 10, 82);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.9;
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.4;
+    controls.minDistance = 20;
+    controls.maxDistance = 120;
+
+    // === Background ===
+    const bgScene = new THREE.Scene();
+    const bgCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const bgMaterial = new THREE.ShaderMaterial({
+        uniforms: { time: { value: 0 } },
+        vertexShader: document.getElementById('bgVertex').textContent,
+        fragmentShader: document.getElementById('bgFragment').textContent,
+        depthWrite: false,
+    });
+    bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMaterial));
+
+    // === Post-processing ===
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+
+    const bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(innerWidth, innerHeight),
+        0.6,   // strength (was 1.4 — way too hot)
+        0.4,   // radius
+        0.4    // threshold — only bright parts bloom
+    );
+    composer.addPass(bloomPass);
+
+    const chromaPass = new ShaderPass({
+        uniforms: {
+            tDiffuse: { value: null },
+            strength: { value: 0.003 }
+        },
+        vertexShader: document.getElementById('chromaVertex').textContent,
+        fragmentShader: document.getElementById('chromaFragment').textContent,
+    });
+    composer.addPass(chromaPass);
+    composer.addPass(new OutputPass());
+
+    // === Generate attractor data ===
+    function generateAttractor(b) {
+        const positions = [];
+        const indices = [];
+        const speeds = [];
+
+        let x = 0.1, y = 0, z = 0;
+
+        // Warm up
+        for (let i = 0; i < 300; i++) {
+            const dx = Math.sin(y) - b * x;
+            const dy = Math.sin(z) - b * y;
+            const dz = Math.sin(x) - b * z;
+            x += dx * CONFIG.dt;
+            y += dy * CONFIG.dt;
+            z += dz * CONFIG.dt;
+        }
+
+        for (let i = 0; i < CONFIG.points; i++) {
+            const dx = Math.sin(y) - b * x;
+            const dy = Math.sin(z) - b * y;
+            const dz = Math.sin(x) - b * z;
+
+            x += dx * CONFIG.dt;
+            y += dy * CONFIG.dt;
+            z += dz * CONFIG.dt;
+
+            const speed = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+            positions.push(x * CONFIG.scale, y * CONFIG.scale, z * CONFIG.scale);
+            indices.push(i / CONFIG.points);
+            speeds.push(speed);
+        }
+
+        return { positions, indices, speeds };
+    }
+
+    // Initial attractor
+    let attractorData = generateAttractor(CONFIG.bBase);
+
+    // === Line mesh ===
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(attractorData.positions, 3));
+    lineGeo.setAttribute('idx', new THREE.Float32BufferAttribute(attractorData.indices, 1));
+    lineGeo.setAttribute('speed', new THREE.Float32BufferAttribute(attractorData.speeds, 1));
+
+    // Center it
+    lineGeo.computeBoundingSphere();
+    const center = lineGeo.boundingSphere.center;
+    lineGeo.translate(-center.x, -center.y, -center.z);
+
+    const lineMat = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 },
+            breathPhase: { value: 0 },
+            uWarmCore: { value: PALETTE.warmCore },
+            uDeepAmber: { value: PALETTE.deepAmber },
+            uEdgeTeal: { value: PALETTE.edgeTeal },
+        },
+        vertexShader: document.getElementById('lineVertex').textContent,
+        fragmentShader: document.getElementById('lineFragment').textContent,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+    });
+
+    const lineMesh = new THREE.Line(lineGeo, lineMat);
+    scene.add(lineMesh);
+
+    // === Particle system ===
+    const particleCount = CONFIG.points;
+    const pSizes = new Float32Array(particleCount);
+    const pOffsets = new Float32Array(particleCount);
+    const pLives = new Float32Array(particleCount);
+
+    for (let i = 0; i < particleCount; i++) {
+        // Only ~2% of points get visible particles (scattered stars around the form)
+        pSizes[i] = Math.random() > 0.98 ? Math.random() * 2.5 + 0.3 : 0.0;
+        pOffsets[i] = Math.random() * 100;
+        pLives[i] = Math.random(); // 0 = young/teal, 1 = mature/warm
+    }
+
+    const particleGeo = new THREE.BufferGeometry();
+    particleGeo.setAttribute('position', lineGeo.getAttribute('position'));
+    particleGeo.setAttribute('size', new THREE.Float32BufferAttribute(pSizes, 1));
+    particleGeo.setAttribute('offset', new THREE.Float32BufferAttribute(pOffsets, 1));
+    particleGeo.setAttribute('life', new THREE.Float32BufferAttribute(pLives, 1));
+
+    const particleMat = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 },
+            breathPhase: { value: 0 },
+            uWarmCore: { value: PALETTE.warmCore },
+            uEdgeTeal: { value: PALETTE.edgeTeal },
+        },
+        vertexShader: document.getElementById('particleVertex').textContent,
+        fragmentShader: document.getElementById('particleFragment').textContent,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+    });
+
+    const particles = new THREE.Points(particleGeo, particleMat);
+    scene.add(particles);
+
+    // === Attractor regeneration on breath ===
+    // Every few breath cycles, regenerate with slightly different b
+    let lastRegenBreath = 0;
+    const regenInterval = Math.PI * 8; // every ~4 full breaths
+
+    function maybeRegenerate(breathPhase) {
+        if (breathPhase - lastRegenBreath > regenInterval) {
+            lastRegenBreath = breathPhase;
+            const currentB = CONFIG.bBase + CONFIG.bBreathAmp * Math.sin(breathPhase);
+            const newData = generateAttractor(currentB);
+
+            // Smoothly blend positions
+            const pos = lineGeo.getAttribute('position').array;
+            for (let i = 0; i < pos.length; i++) {
+                pos[i] = pos[i] * 0.3 + (newData.positions[i] - center.x) * 0.7;
+            }
+
+            const spd = lineGeo.getAttribute('speed').array;
+            for (let i = 0; i < spd.length; i++) {
+                spd[i] = newData.speeds[i];
+            }
+
+            lineGeo.getAttribute('position').needsUpdate = true;
+            lineGeo.getAttribute('speed').needsUpdate = true;
+        }
+    }
+
+    // === HUD updates ===
+    const coherenceEl = document.getElementById('coherenceVal');
+    const entropyEl = document.getElementById('entropyVal');
+    const bEl = document.getElementById('bVal');
+    const breathCircle = document.getElementById('breathCircle');
+
+    function updateHUD(breathPhase, currentB) {
+        // Coherence: inversely related to b deviation from base
+        const coherence = 1.0 - Math.abs(currentB - CONFIG.bBase) / CONFIG.bBreathAmp;
+        // Entropy: related to how chaotic the current state is
+        const entropy = 0.5 + 0.5 * Math.sin(breathPhase * 1.7 + 0.5);
+
+        coherenceEl.textContent = coherence.toFixed(2);
+        entropyEl.textContent = entropy.toFixed(2);
+        bEl.textContent = currentB.toFixed(4);
+
+        // Breath indicator circle
+        const r = 8 + 6 * Math.sin(breathPhase);
+        breathCircle.setAttribute('r', r.toFixed(1));
+        const opacity = 0.2 + 0.2 * Math.sin(breathPhase);
+        breathCircle.setAttribute('stroke-opacity', opacity.toFixed(2));
+    }
+
+    // === Animation loop ===
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        const delta = clock.getDelta();
+        const elapsed = clock.getElapsedTime();
+        const breathPhase = elapsed * CONFIG.breathSpeed * Math.PI * 2;
+        const currentB = CONFIG.bBase + CONFIG.bBreathAmp * Math.sin(breathPhase);
+
+        // Update uniforms
+        lineMat.uniforms.time.value = elapsed;
+        lineMat.uniforms.breathPhase.value = breathPhase;
+        particleMat.uniforms.time.value = elapsed;
+        particleMat.uniforms.breathPhase.value = breathPhase;
+        bgMaterial.uniforms.time.value = elapsed;
+
+        // Subtle chromatic aberration pulse
+        chromaPass.uniforms.strength.value = 0.001 + 0.001 * Math.sin(breathPhase * 0.5);
+
+        // Regenerate attractor occasionally
+        maybeRegenerate(breathPhase);
+
+        // HUD
+        if (Math.floor(elapsed * 10) % 2 === 0) {
+            updateHUD(breathPhase, currentB);
+        }
+
+        controls.update();
+
+        // Render background then scene
+        renderer.autoClear = false;
+        renderer.clear();
+        renderer.render(bgScene, bgCamera);
+        renderer.autoClear = true;
+        composer.render();
+    }
+
+    // === Resize ===
+    window.addEventListener('resize', () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+        composer.setSize(innerWidth, innerHeight);
+        bloomPass.resolution.set(innerWidth, innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>
