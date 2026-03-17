@@ -198,7 +198,6 @@ renderer.toneMappingExposure = 0.9;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = CONFIG.palette.bg;
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 300);
 camera.position.set(0, 12, 30);
@@ -366,9 +365,39 @@ const glowFrag = `
   }
 `;
 
+// ─── BACKGROUND ───
+// Render as a separate scene before the composer, using shared render target
+const bgScene = new THREE.Scene();
+const bgCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const bgMat = new THREE.ShaderMaterial({
+  depthWrite: false,
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: `
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+      vec2 center = vec2(vUv.x - 0.5, (vUv.y - 0.35));
+      float d = length(center);
+      vec3 inner = vec3(0.08, 0.05, 0.025);
+      vec3 outer = vec3(0.015, 0.01, 0.008);
+      vec3 color = mix(inner, outer, smoothstep(0.0, 0.6, d));
+      color *= 0.95 + 0.05 * sin(uTime * 0.3);
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `,
+  uniforms: { uTime: { value: 0 } }
+});
+bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat));
+
 // ─── POST-PROCESSING ───
 const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
+const bgRenderPass = new RenderPass(bgScene, bgCamera);
+bgRenderPass.clear = true;
+composer.addPass(bgRenderPass);
+const mainRenderPass = new RenderPass(scene, camera);
+mainRenderPass.clear = false;
+mainRenderPass.clearDepth = true;
+composer.addPass(mainRenderPass);
 
 const bloom = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -552,6 +581,7 @@ async function init() {
       mat.uniforms.uGrowth.value = growth;
     }
 
+    bgMat.uniforms.uTime.value = t;
     controls.update();
     composer.render();
   }
