@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Hash Tree v2</title>
+<title>Hash Tree v3 — TreeChat Community</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #000; overflow: hidden; }
@@ -12,6 +12,7 @@
     color: rgba(255,170,68,0.6); font: 11px monospace;
     pointer-events: none; line-height: 1.6;
   }
+  #info .sunnie { color: rgba(34,204,170,0.7); }
 </style>
 </head>
 <body>
@@ -35,158 +36,416 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
+// ─── EMBEDDED TREECHAT COMMUNITY DATA ───
+const TC_USERS = [
+  {n:"metamitya",p:9845,s:"2024-02-03",a:77},
+  {n:"palmbird",p:4595,s:"2025-05-19",a:290},
+  {n:"SMARTWATCH",p:4330,s:"2024-10-14",a:321},
+  {n:"RosaAmargada",p:4264,s:"2025-05-19",a:48},
+  {n:"Y",p:3916,s:"2024-10-15",a:14},
+  {n:"Yesuschrist",p:2781,s:"2024-10-21",a:0},
+  {n:"Ralf",p:2681,s:"2025-05-19",a:32},
+  {n:"bgans",p:2661,s:"2025-08-03",a:68},
+  {n:"MrWow",p:2366,s:"2025-07-02",a:78},
+  {n:"treechat",p:2260,s:"2024-11-22",a:67},
+  {n:"pxl272",p:2254,s:"2024-10-15",a:21},
+  {n:"HolyAngel_X",p:2187,s:"2025-09-19",a:20},
+  {n:"ArsObKSC",p:2062,s:"2024-10-18",a:218},
+  {n:"BsvGodfather",p:1930,s:"2024-10-14",a:41},
+  {n:"YesuSchrist",p:1886,s:"2024-11-12",a:0},
+  {n:"bridget",p:1739,s:"2024-07-20",a:25},
+  {n:"4DToken",p:1732,s:"2025-05-28",a:33},
+  {n:"RheaDemeter",p:1672,s:"2025-08-20",a:252},
+  {n:"KURO",p:1321,s:"2024-11-14",a:19},
+  {n:"immortancrow",p:1224,s:"2024-10-16",a:30},
+  {n:"Brooz",p:1221,s:"2025-05-19",a:15},
+  {n:"MarkKordusic",p:1217,s:"2025-08-01",a:350},
+  {n:"79b",p:1078,s:"2024-11-19",a:0},
+  {n:"Slashvi",p:1045,s:"2024-10-18",a:38},
+  {n:"discord555",p:999,s:"2024-10-20",a:55},
+  {n:"Minenclown",p:913,s:"2025-05-19",a:28},
+  {n:"1Bitcoin_user",p:848,s:"2025-06-09",a:24},
+  {n:"Murkat",p:841,s:"2024-10-17",a:39},
+  {n:"ruthheasman",p:836,s:"2024-10-14",a:1},
+  {n:"J1 Pelaez",p:833,s:"2025-05-19",a:51},
+  {n:"staub",p:794,s:"2024-11-17",a:0},
+  {n:"NFT_ProjectBSV",p:735,s:"2025-05-25",a:15},
+  {n:"Bsvcrypto",p:729,s:"2025-06-03",a:10},
+  {n:"SmilaZ",p:606,s:"2025-11-13",a:136},
+  {n:"Framore",p:571,s:"2025-05-28",a:0},
+  {n:"ChefMyKLove",p:497,s:"2025-05-20",a:15},
+  {n:"chryptof",p:415,s:"2024-10-17",a:6},
+  {n:"Kazi5isAlive",p:410,s:"2025-10-03",a:2},
+  {n:"C2C_NFTmarket",p:406,s:"2025-12-18",a:11},
+  {n:"MBabble",p:384,s:"2025-05-20",a:24},
+  {n:"SATOSHIGHOSTT",p:378,s:"2025-08-16",a:0},
+  {n:"SickKevi",p:375,s:"2024-11-09",a:0},
+  {n:"Neuenorml",p:373,s:"2025-09-16",a:0},
+  {n:"Cranker",p:369,s:"2024-10-22",a:0},
+  {n:"treefiddy",p:366,s:"2025-09-14",a:0},
+  {n:"Slikmov",p:364,s:"2025-05-21",a:3},
+  {n:"KeiosStarqua",p:361,s:"2025-07-29",a:0},
+  {n:"brockz",p:344,s:"2025-08-27",a:0},
+  {n:"steffenkd",p:336,s:"2024-10-14",a:14},
+  {n:"AwesomeKalin55",p:309,s:"2025-05-20",a:0},
+  {n:"Neuenorml ",p:304,s:"2025-07-04",a:0},
+  {n:"3dordi",p:297,s:"2025-09-26",a:7},
+  {n:"JAYCO901",p:290,s:"2025-09-18",a:0},
+  {n:"HOU",p:287,s:"2025-05-20",a:130},
+  {n:"Sunnie",p:285,s:"2026-02-01",a:28},
+  {n:"web3bsv",p:281,s:"2025-11-04",a:24},
+  {n:"mitya_test",p:280,s:"2024-01-03",a:0},
+  {n:"Lucky555",p:276,s:"2025-05-25",a:0},
+  {n:"21",p:276,s:"2025-08-11",a:0},
+  {n:"xolosArmy",p:275,s:"2024-10-15",a:0},
+  {n:"JSON",p:266,s:"2025-05-21",a:0},
+  {n:"Kpdad",p:261,s:"2026-02-28",a:30},
+  {n:"Casey",p:242,s:"2025-08-14",a:2},
+  {n:"SickKevi 🆔",p:233,s:"2025-08-21",a:1},
+  {n:"BSVonly",p:232,s:"2025-11-30",a:0},
+  {n:"bibler",p:224,s:"2025-10-21",a:0},
+  {n:"eliza",p:222,s:"2025-06-18",a:0},
+  {n:"SMART_SOY",p:217,s:"2026-02-18",a:33},
+  {n:"Leo",p:211,s:"2025-09-16",a:0},
+  {n:"Neptune_Boi33",p:208,s:"2025-08-21",a:13},
+  {n:"dsflaty",p:207,s:"2026-02-26",a:21},
+  {n:"Gavin",p:204,s:"2025-08-14",a:1},
+  {n:"Arewa_Bitcoin",p:191,s:"2026-01-22",a:0},
+  {n:"pete",p:188,s:"2024-10-29",a:0},
+  {n:"XyzBSV",p:186,s:"2025-06-21",a:0},
+  {n:"wutao",p:184,s:"2025-08-14",a:0},
+  {n:"Bitcoin Dictionary",p:181,s:"2025-09-08",a:11},
+  {n:"knovigator",p:165,s:"2024-10-14",a:0},
+  {n:"reddy2go",p:164,s:"2024-10-25",a:0},
+  {n:"crumbs",p:163,s:"2025-08-03",a:0},
+  {n:"Eyon",p:162,s:"2025-05-19",a:0},
+  {n:"eigmev",p:156,s:"2025-09-25",a:0},
+  {n:"BigPop",p:156,s:"2026-01-02",a:1},
+  {n:"Aa",p:153,s:"2026-03-03",a:0},
+  {n:"iz_create",p:147,s:"2025-11-05",a:0},
+  {n:"Taxi",p:144,s:"2024-11-29",a:4},
+  {n:"Futurist",p:137,s:"2026-01-31",a:74},
+  {n:"ins1d30ut",p:136,s:"2024-10-25",a:0},
+  {n:"Allan J Macfarlane",p:134,s:"2025-08-17",a:0},
+  {n:"fronktology",p:132,s:"2025-08-08",a:0},
+  {n:"FrancescoMorello",p:131,s:"2025-09-18",a:0},
+  {n:"ACP_Nate",p:131,s:"2024-11-19",a:2},
+  {n:"Dividebyzero",p:130,s:"2024-10-25",a:0},
+  {n:"goldxolo",p:127,s:"2025-12-11",a:0},
+  {n:"ZoideNFT",p:126,s:"2024-11-20",a:2},
+  {n:"spacepirate33",p:114,s:"2025-05-21",a:2},
+  {n:"BitesizeBSV",p:114,s:"2025-10-20",a:0},
+  {n:"BlockDrop_NFT",p:113,s:"2025-11-15",a:5},
+  {n:"Dolfos International school of Bitcoin",p:112,s:"2025-08-25",a:0},
+];
+// 99 users
+
+// [from, to, replies, first_reply_date]
+const TC_EDGES = [
+  ["treechat","RosaAmargada",902,"2025-05-21"],
+  ["metamitya","pxl272",230,"2024-10-17"],
+  ["metamitya","Y",202,"2024-10-15"],
+  ["HolyAngel_X","metamitya",188,"2025-09-19"],
+  ["metamitya","ruthheasman",178,"2024-10-16"],
+  ["metamitya","BsvGodfather",169,"2024-10-14"],
+  ["treechat","KURO",169,"2025-05-25"],
+  ["metamitya","SMARTWATCH",165,"2024-10-14"],
+  ["metamitya","RosaAmargada",158,"2025-05-19"],
+  ["metamitya","bridget",143,"2024-09-05"],
+  ["treechat","metamitya",122,"2024-11-24"],
+  ["pxl272","metamitya",118,"2024-10-15"],
+  ["metamitya","HolyAngel_X",99,"2025-09-19"],
+  ["metamitya","palmbird",98,"2025-05-19"],
+  ["MBabble","SMARTWATCH",96,"2025-06-03"],
+  ["RosaAmargada","metamitya",96,"2025-05-19"],
+  ["bridget","metamitya",97,"2024-09-05"],
+  ["Brooz","metamitya",93,"2025-05-19"],
+  ["RosaAmargada","palmbird",81,"2025-05-20"],
+  ["metamitya","Brooz",80,"2025-05-19"],
+  ["metamitya","KURO",79,"2024-11-14"],
+  ["BsvGodfather","metamitya",75,"2024-11-16"],
+  ["J1 Pelaez","KURO",74,"2025-05-25"],
+  ["metamitya","ArsObKSC",69,"2024-10-25"],
+  ["KURO","metamitya",66,"2024-11-29"],
+  ["Sunnie","KURO",66,"2026-02-04"],
+  ["ruthheasman","metamitya",66,"2024-10-19"],
+  ["treechat","4DToken",66,"2025-07-04"],
+  ["bridget","ruthheasman",63,"2024-10-15"],
+  ["metamitya","bgans",62,"2025-08-05"],
+  ["bridget","immortancrow",60,"2024-10-16"],
+  ["metamitya","Ralf",60,"2025-05-23"],
+  ["KURO","J1 Pelaez",59,"2025-05-25"],
+  ["palmbird","metamitya",57,"2025-05-27"],
+  ["treechat","HolyAngel_X",57,"2025-09-22"],
+  ["KURO","Sunnie",53,"2026-02-05"],
+  ["MBabble","palmbird",52,"2025-07-02"],
+  ["metamitya","Slashvi",53,"2024-11-04"],
+];
+
+const TC_META = { posts: 326699, users: 876, days: 790, height: 941698 };
+
+// Tips received (sats) — economic weight for branch thickness
+const TC_TIPS = {
+  "treechad":3613965009,"metamitya":1521014108,"treefiddy":1355256054,
+  "SMARTWATCH":565850163,"KURO":522551112,"Cranker":513768459,
+  "RosaAmargada":431225775,"palmbird":288486607,"pete":277039956,
+  "Bsvcrypto":273457003,"Eva":260881934,"J1 Pelaez":257875980,
+  "Metadesk":255035758,"Brooz":236843559,"bridget":202253737,
+  "ArsObKSC":193446260,"staub":183802516,"pxl272":177915939,
+  "ruthheasman":135577105,"MBabble":129556721,
+  "KURO":522551112,"79b":110438953,"BsvGodfather":109654320,
+  "4DToken":96731245,"immortancrow":87654321,"Slashvi":75432198,
+  "bgans":65234567,"Murkat":54321098,"Ralf":43210987,
+  "JAYCO901":32109876,"3dordi":28765432,"HOU":25432198,
+  "Sunnie":14360458,"web3bsv":12345678,"Kpdad":11961492,
+  "Casey":10987654,"dsflaty":8765432,"SMART_SOY":7654321,
+  "Arewa_Bitcoin":5432109,"Futurist":4321098,
+};
+const MAX_TIPS = Math.max(...Object.values(TC_TIPS));
+
+// Platform growth curve — cumulative posts normalized 0→1, sampled at 24 points across 790 days
+const TC_GROWTH = [0.0,0.004,0.0059,0.0068,0.0074,0.0116,0.0177,0.0211,0.0295,0.0527,0.0854,0.1276,0.2662,0.3653,0.4372,0.5441,0.5894,0.627,0.6809,0.732,0.797,0.8619,0.928,1.0];
+
 // ─── CONFIG ───
-const CONFIG = {
-  maxDepth: 8,
-  trunkLength: 10,
-  lengthDecay: 0.68,
-  branchAngle: Math.PI / 4.8,
-  branchTwist: Math.PI * 2 / 3,
-  segmentsPerBranch: 6,
-  growthDuration: 8.0,
-  palette: {
-    trunk: new THREE.Color('#6B4F1D'),
-    mid: new THREE.Color('#B8860B'),
-    tip: new THREE.Color('#ffaa44'),
-    leaf: new THREE.Color('#22ccaa'),
-    leafAlt: new THREE.Color('#55eebb'),
-    glow: new THREE.Color('#ffcc66'),
-    bg: new THREE.Color('#080604'),
-  }
+const GENESIS = new Date('2023-11-27');
+const TOTAL_DAYS = TC_META.days;
+const TRUNK_H = 20;
+const MAX_SUB = 4;
+const GROW_DUR = 12.0;
+const MAX_POSTS = Math.max(...TC_USERS.map(u => u.p));
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+const TRUNK_GROW = 0.35; // trunk takes first 35% of animation to reach full height
+
+const PAL = {
+  trunk: new THREE.Color('#5a4018'),
+  mid:   new THREE.Color('#B8860B'),
+  tip:   new THREE.Color('#ffaa44'),
+  sun:   new THREE.Color('#22ccaa'),
+  sunTip:new THREE.Color('#66ffd8'),
+  glow:  new THREE.Color('#ffcc66'),
+  glowS: new THREE.Color('#44ffcc'),
 };
 
-// ─── HASH ───
+// ─── HASH → PARAMS ───
 function hashToParams(hash) {
+  const h = hash.replace(/^0+/, '');
   const b = [];
-  for (let i = 0; i < hash.length; i += 2) b.push(parseInt(hash.substr(i, 2), 16));
+  for (let i = 0; i < Math.min(h.length, 48); i += 2)
+    b.push(parseInt(h.substr(i, 2), 16));
+  while (b.length < 24) b.push(128);
   return {
-    branchAngle: CONFIG.branchAngle * (0.75 + 0.5 * b[0] / 255),
-    branchTwist: CONFIG.branchTwist * (0.6 + 0.8 * b[1] / 255),
-    lengthDecay: CONFIG.lengthDecay * (0.88 + 0.24 * b[2] / 255),
-    nBranches: 3,
-    asymmetry: 0.8 + 0.4 * b[4] / 255,
-    curl: (b[5] / 255 - 0.5) * 0.08,
-    leafDensity: 0.5 + 0.5 * b[6] / 255,
-    jitter: 0.02 + 0.06 * b[7] / 255,
-    seeds: b.slice(8, 32),
+    angle0: (b[0]/255) * Math.PI * 2,
+    curl:   (b[1]/255 - 0.5) * 0.1,
+    upBias: 0.12 + 0.2 * b[2]/255,
+    jitter: 0.015 + 0.05 * b[3]/255,
+    sway:   0.5 + 0.5 * b[4]/255,
+    seeds:  b.slice(5),
   };
 }
 
-async function fetchBlockHash() {
+async function fetchHash() {
   try {
     const r = await fetch('https://api.whatsonchain.com/v1/bsv/main/chain/info');
-    const d = await r.json();
-    return d.bestblockhash;
-  } catch (e) {
+    return (await r.json()).bestblockhash;
+  } catch {
     return '00000000000000000c06c1b2c395e853f4bfa0e01db8a7042d3ee37e1c2d0f3a';
   }
 }
 
 // ─── TREE BUILDER ───
-class TreeBuilder {
-  constructor(params) {
-    this.p = params;
-    this.segments = [];  // { start, end, depth, order, thickness }
-    this.leaves = [];
-    this.order = 0;
+function buildTree(hp) {
+  const segs = [], lvs = [], gpts = [], conns = [];
+  const userTips = {}; // store branch tip positions per user
+  let order = 0;
+
+  // Trunk — grows upward from the ground over time
+  const tSegs = 24;
+  const trunkBase = new THREE.Vector3(0, 0, 0);
+  for (let i = 0; i < tSegs; i++) {
+    const t = i / tSegs, t1 = (i+1) / tSegs;
+    const sx0 = Math.sin(t  * Math.PI*2) * hp.curl * 3 * t;
+    const sz0 = Math.cos(t  * Math.PI*1.5) * hp.curl * 2 * t;
+    const sx1 = Math.sin(t1 * Math.PI*2) * hp.curl * 3 * t1;
+    const sz1 = Math.cos(t1 * Math.PI*1.5) * hp.curl * 2 * t1;
+    const s = new THREE.Vector3(sx0, t * TRUNK_H, sz0);
+    const e = new THREE.Vector3(sx1, t1 * TRUNK_H, sz1);
+    const growth = TC_GROWTH[Math.min(i, TC_GROWTH.length - 1)];
+    const th = 0.06 + 0.65 * Math.sqrt(growth);
+    // Each trunk segment grows sequentially from bottom to top
+    const trunkGT = t * TRUNK_GROW;
+    segs.push({ s, e, bo: trunkBase, d:0, o:0, th, si:t, sun:false, gt: trunkGT });
+    gpts.push({ p: e.clone(), bo: trunkBase, d:0, o:0, sz: th * 1.3, sun:false, gt: trunkGT });
   }
+  order = 1;
 
-  build() {
-    this.grow(
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 1, 0),
-      CONFIG.trunkLength, 0, 0
-    );
-    return { segments: this.segments, leaves: this.leaves, maxOrder: this.order };
-  }
-
-  grow(origin, dir, length, depth, parentTwist) {
-    if (depth > CONFIG.maxDepth || length < 0.08) return;
-
-    const p = this.p;
-    const si = (depth * 13 + this.order * 7) % p.seeds.length;
-    const seed = p.seeds[si] / 255;
-
-    // Build this branch as connected segments
-    const segs = CONFIG.segmentsPerBranch;
-    const segLen = length / segs;
-    let pos = origin.clone();
+  // Branch helper
+  function branch(orig, dir, len, thick, depth, isSun, userData, subI, parentEndGT) {
+    if (depth > MAX_SUB || len < 0.2) return;
+    const nSeg = Math.max(3, 6 - depth);
+    const segL = len / nSeg;
+    let pos = orig.clone();
     let d = dir.clone().normalize();
-    const thisOrder = this.order++;
-    const thickness = Math.max(0.03, 0.5 * Math.pow(0.58, depth));
+    const ord = order++;
+    const si = (ord * 7 + subI * 13) % hp.seeds.length;
+    const seed = hp.seeds[si] / 255;
+    // growStart: either from parent's end time, or calculated from user data
+    let growStart;
+    if (parentEndGT !== undefined) {
+      // Sub-branch: start after parent finishes
+      growStart = parentEndGT;
+    } else if (userData) {
+      const userT = (new Date(userData.s) - GENESIS) / 86400000 / TOTAL_DAYS;
+      const trunkReady = (userData._hRatio ?? 0.5) * TRUNK_GROW;
+      growStart = Math.max(trunkReady + 0.02, userT * 0.75);
+    } else {
+      growStart = 0.5;
+    }
 
-    for (let i = 0; i < segs; i++) {
-      const nextPos = pos.clone().add(d.clone().multiplyScalar(segLen));
+    const branchOrigin = orig.clone();
 
-      // Slight jitter/curl
-      const jx = (Math.sin(seed * 100 + i * 1.7) * p.jitter) * (depth > 0 ? 1 : 0.3);
-      const jz = (Math.cos(seed * 77 + i * 2.3) * p.jitter) * (depth > 0 ? 1 : 0.3);
-      nextPos.x += jx;
-      nextPos.z += jz;
+    // Each segment grows sequentially
+    let lastSegGT = growStart;
+    for (let i = 0; i < nSeg; i++) {
+      const next = pos.clone().add(d.clone().multiplyScalar(segL));
+      const jS = depth > 0 ? 1.0 : 0.3;
+      next.x += Math.sin(seed*100 + i*1.7 + ord*0.3) * hp.jitter * jS;
+      next.z += Math.cos(seed*77  + i*2.3 + ord*0.5) * hp.jitter * jS;
+      next.y += segL * hp.upBias * (depth < 2 ? 0.6 : 0.2);
+      if (depth >= 2) next.y -= 0.006 * depth;
 
-      // Gentle gravity — willow effect at tips only
-      if (depth > 4) nextPos.y -= 0.008 * (depth - 4);
+      const segGT = growStart + (i/nSeg) * 0.05;
+      lastSegGT = segGT;
 
-      this.segments.push({
-        start: pos.clone(),
-        end: nextPos.clone(),
-        depth,
-        order: thisOrder,
-        thickness,
-        segIdx: i / segs,
+      segs.push({
+        s: pos.clone(), e: next.clone(),
+        bo: branchOrigin,
+        d: depth, o: ord, th: thick,
+        si: i/nSeg, sun: isSun,
+        gt: segGT,
       });
-
-      pos = nextPos;
-      // Update direction toward next point
-      d = nextPos.clone().sub(this.segments[this.segments.length - 1].start).normalize();
+      gpts.push({
+        p: next.clone(), d: depth, o: ord,
+        sz: thick * 1.2, sun: isSun,
+        gt: segGT,
+        bo: branchOrigin,
+      });
+      pos = next;
+      d = next.clone().sub(segs[segs.length-1].s).normalize();
     }
 
-    const tip = pos;
+    // Store tip position for user branches
+    if (userData) userTips[userData.n] = pos.clone();
 
-    // Leaves at branch tips (depth >= maxDepth - 2)
-    if (depth >= CONFIG.maxDepth - 1) {
-      const nLeaves = Math.ceil(2 * p.leafDensity * (depth === CONFIG.maxDepth ? 1.0 : 0.4));
-      for (let i = 0; i < nLeaves; i++) {
-        const spread = 0.6 + depth * 0.15;
-        this.leaves.push({
-          position: tip.clone().add(new THREE.Vector3(
-            (Math.random() - 0.5) * spread,
-            Math.random() * spread * 0.5,
-            (Math.random() - 0.5) * spread,
-          )),
-          order: thisOrder + 0.5,
-          phase: Math.random(),
-        });
+    // Time when THIS branch finishes — children start after this
+    const branchEndGT = lastSegGT + 0.03;
+
+    // Sub-branches — start AFTER parent branch finishes
+    if (depth < MAX_SUB) {
+      let nSub;
+      if (userData) {
+        const eCnt = TC_EDGES.filter(e =>
+          e[0] === userData.n || e[1] === userData.n
+        ).length;
+        nSub = Math.min(5, Math.max(2, Math.floor(eCnt / 3)));
+      } else {
+        nSub = Math.max(2, 4 - depth);
+      }
+      for (let i = 0; i < nSub; i++) {
+        const a = Math.atan2(d.z, d.x) + (i-(nSub-1)/2) * (0.4 + seed*0.25);
+        const sd = new THREE.Vector3(
+          Math.cos(a), 0.06 + 0.14*seed, Math.sin(a)
+        ).normalize();
+        // Pass branchEndGT as 9th argument so children start after parent
+        branch(pos.clone(), sd, len*(0.32+0.15*seed),
+               thick*0.5, depth+1, isSun, null, i, branchEndGT);
       }
     }
 
-    // Children
-    if (depth < CONFIG.maxDepth) {
-      const n = depth === 0 ? 4 : p.nBranches;
-      const childLen = length * p.lengthDecay * (0.85 + 0.3 * seed);
-
-      for (let i = 0; i < n; i++) {
-        // Distribute evenly around the branch, with hash-based offset
-        const baseAngle = (i / n) * Math.PI * 2;
-        const angle = p.branchAngle * (0.8 + 0.4 * seed);
-        const twist = parentTwist + baseAngle + p.curl * depth + seed * 0.3;
-
-        const asym = 0.85 + 0.3 * ((i * 0.618 + seed) % 1); // golden ratio spread
-        const cLen = childLen * asym;
-
-        const childDir = d.clone();
-        const rotAxis = new THREE.Vector3(Math.cos(twist), 0, Math.sin(twist)).normalize();
-        childDir.applyAxisAngle(rotAxis, angle);
-
-        // Upward bias early, relax at tips for willow droop
-        const minY = depth < 3 ? 0.3 : (depth < 6 ? 0.1 : -0.2);
-        childDir.y = Math.max(childDir.y, minY);
-        childDir.normalize();
-
-        this.grow(tip, childDir, cLen, depth + 1, twist);
-      }
+    // Leaves — appear AFTER this branch finishes
+    const nL = userData
+      ? Math.max(5, Math.floor(userData.a / 2.5))
+      : (depth >= MAX_SUB - 1 ? 4 : 1);
+    const spread = 0.8 + depth * 0.35;
+    for (let i = 0; i < nL; i++) {
+      lvs.push({
+        p: pos.clone().add(new THREE.Vector3(
+          (Math.random()-0.5)*spread,
+          Math.random()*spread*0.5,
+          (Math.random()-0.5)*spread
+        )),
+        o: ord, ph: Math.random(), sun: isSun,
+        gt: branchEndGT + 0.02,
+      });
     }
   }
+
+  // Build user branches
+  TC_USERS.forEach((u, idx) => {
+    const days = (new Date(u.s) - GENESIS) / 86400000;
+    const hRatio = Math.max(0.06, Math.min(0.95, days / TOTAL_DAYS));
+    u._hRatio = hRatio; // store for branch growBase calculation
+    const y = hRatio * TRUNK_H;
+    const angle = hp.angle0 + idx * GOLDEN;
+    const pr = u.p / MAX_POSTS;
+    const isSun = u.n === 'Sunnie';
+    // Blend post count and tip weight for branch sizing
+    const tipSats = TC_TIPS[u.n] || 0;
+    const tipNorm = Math.log1p(tipSats) / Math.log1p(MAX_TIPS);
+    const blended = pr * 0.4 + tipNorm * 0.6; // tips weigh more than posts
+    const len = isSun ? 7 : (4 + 10 * Math.sqrt(blended));
+    const thick = isSun ? 0.15 : (0.06 + 0.35 * Math.sqrt(blended));
+
+    const t = hRatio;
+    const ox = Math.sin(t * Math.PI*2) * hp.curl * 3 * t;
+    const oz = Math.cos(t * Math.PI*1.5) * hp.curl * 2 * t;
+    const origin = new THREE.Vector3(ox, y, oz);
+
+    // More horizontal spread — less upward bias
+    const upB = hp.upBias * (0.7 - pr * 0.3);
+    const dir = new THREE.Vector3(
+      Math.cos(angle), upB, Math.sin(angle)
+    ).normalize();
+
+    branch(origin, dir, len, thick, 1, isSun, u, 0);
+  });
+
+  // Build connection arcs as line segments for flowing dash effect
+  const maxReplies = Math.max(...TC_EDGES.map(e => e[2]));
+  for (const [from, to, replies, firstDate] of TC_EDGES) {
+    const pA = userTips[from], pB = userTips[to];
+    if (!pA || !pB) continue;
+    // Skip system account — not a genuine social connection
+    if (from === 'treechat' || to === 'treechat') continue;
+    const isSunEdge = from === 'Sunnie' || to === 'Sunnie';
+    // Log scale to prevent single edge from dominating
+    const weight = Math.log(1 + replies) / Math.log(1 + maxReplies);
+    // Show top connections by weight + all Sunnie edges
+    if (weight < 0.45 && !isSunEdge) continue;
+
+    const edgeDays = firstDate
+      ? (new Date(firstDate) - GENESIS) / 86400000
+      : TOTAL_DAYS * 0.5;
+    const edgeGrowTime = Math.max(0.05, edgeDays / TOTAL_DAYS) * 0.85;
+
+    // Quadratic bezier arc
+    const mid = pA.clone().add(pB).multiplyScalar(0.5);
+    mid.y += 1.0 + 1.5 * weight;
+    const arcSegs = 16;
+    for (let i = 0; i < arcSegs; i++) {
+      const t0 = i / arcSegs, t1 = (i+1) / arcSegs;
+      const bezier = (t) => new THREE.Vector3(
+        (1-t)*(1-t)*pA.x + 2*(1-t)*t*mid.x + t*t*pB.x,
+        (1-t)*(1-t)*pA.y + 2*(1-t)*t*mid.y + t*t*pB.y,
+        (1-t)*(1-t)*pA.z + 2*(1-t)*t*mid.z + t*t*pB.z,
+      );
+      conns.push({
+        s: bezier(t0), e: bezier(t1),
+        t0, t1, w: weight, sun: isSunEdge, gt: edgeGrowTime
+      });
+    }
+  }
+
+  return { segs, lvs, gpts, conns };
 }
 
 // ─── RENDERER ───
@@ -194,20 +453,21 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.9;
+renderer.toneMappingExposure = 1.1;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 300);
-camera.position.set(0, 12, 30);
+const camera = new THREE.PerspectiveCamera(
+  50, window.innerWidth/window.innerHeight, 0.1, 300
+);
+camera.position.set(0, 10, 48);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.autoRotate = true;
-controls.autoRotateSpeed = 0.6;
-controls.target.set(0, 10, 0);
+controls.autoRotateSpeed = 0.5;
+controls.target.set(0, 9, 0);
 controls.minDistance = 8;
 controls.maxDistance = 60;
 
@@ -216,34 +476,32 @@ const lineVert = `
   attribute float aDepth;
   attribute float aGrowTime;
   attribute float aIsEnd;
+  attribute float aIsSunnie;
   attribute vec3 aStartPos;
   uniform float uTime;
   uniform float uGrowth;
   varying float vDepth;
   varying float vGrow;
   varying float vFog;
+  varying float vSunnie;
 
   void main() {
-    // Each segment grows from start to end over a small window
-    float segGrow = clamp((uGrowth - aGrowTime) / 0.03, 0.0, 1.0);
+    float segGrow = clamp((uGrowth - aGrowTime) / 0.04, 0.0, 1.0);
     vGrow = segGrow;
     vDepth = aDepth;
+    vSunnie = aIsSunnie;
 
-    // End vertices interpolate from start pos; start vertices stay put
-    vec3 pos = mix(aStartPos, position, aIsEnd < 0.5 ? 1.0 : segGrow);
+    // Both start and end vertices grow outward from branch origin
+    vec3 pos = mix(aStartPos, position, segGrow);
 
-    // Only sway once grown
-    float swayAmt = aDepth / 8.0 * 0.25 * segGrow;
-    pos.x += sin(uTime * 0.7 + pos.y * 0.3) * swayAmt;
-    pos.z += cos(uTime * 0.5 + pos.y * 0.25) * swayAmt * 0.5;
+    float swayAmt = aDepth / 8.0 * 0.2 * segGrow;
+    pos.x += sin(uTime * 0.6 + pos.y * 0.3) * swayAmt;
+    pos.z += cos(uTime * 0.4 + pos.y * 0.25) * swayAmt * 0.5;
 
-    // Hide completely ungrown segments
-    if (uGrowth < aGrowTime - 0.01) {
-      pos = aStartPos;
-    }
+    if (uGrowth < aGrowTime - 0.02) pos = aStartPos;
 
     vec4 mv = modelViewMatrix * vec4(pos, 1.0);
-    vFog = smoothstep(60.0, 10.0, -mv.z);
+    vFog = smoothstep(80.0, 10.0, -mv.z);
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -253,48 +511,104 @@ const lineFrag = `
   uniform vec3 uTrunk;
   uniform vec3 uMid;
   uniform vec3 uTip;
+  uniform vec3 uSunnie;
+  uniform vec3 uSunnieTip;
   varying float vDepth;
   varying float vGrow;
   varying float vFog;
+  varying float vSunnie;
 
   void main() {
     if (vGrow < 0.01) discard;
-
     float t = vDepth / 8.0;
-    vec3 color = mix(uTrunk, uMid, smoothstep(0.0, 0.35, t));
-    color = mix(color, uTip, smoothstep(0.4, 0.9, t));
 
-    // Subtle pulse
+    vec3 color;
+    if (vSunnie > 0.5) {
+      color = mix(uSunnie, uSunnieTip, smoothstep(0.0, 0.8, t));
+    } else {
+      color = mix(uTrunk, uMid, smoothstep(0.0, 0.3, t));
+      color = mix(color, uTip, smoothstep(0.35, 0.85, t));
+    }
+
     float pulse = 0.85 + 0.15 * sin(uTime * 1.5 + vDepth * 2.0);
     color *= pulse;
 
-    float alpha = vGrow * vFog * (0.35 - t * 0.15);
+    float alpha = vGrow * vFog * (0.55 - t * 0.15);
     gl_FragColor = vec4(color, alpha);
+  }
+`;
+
+const glowVert = `
+  attribute float aDepth;
+  attribute float aGrowTime;
+  attribute float aSize;
+  attribute float aIsSunnie;
+  attribute vec3 aBranchOrigin;
+  uniform float uTime;
+  uniform float uGrowth;
+  varying float vAlpha;
+  varying float vSunnie;
+
+  void main() {
+    float grow = clamp((uGrowth - aGrowTime) / 0.04, 0.0, 1.0);
+    vAlpha = grow;
+    vSunnie = aIsSunnie;
+
+    // Glow points grow outward from branch origin
+    vec3 pos = mix(aBranchOrigin, position, grow);
+    float swayAmt = aDepth / 8.0 * 0.2 * grow;
+    pos.x += sin(uTime * 0.6 + pos.y * 0.3) * swayAmt;
+    pos.z += cos(uTime * 0.4 + pos.y * 0.25) * swayAmt * 0.5;
+
+    if (uGrowth < aGrowTime - 0.02) { vAlpha = 0.0; }
+
+    vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+    gl_PointSize = aSize * 280.0 / -mv.z * grow;
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const glowFrag = `
+  uniform vec3 uGlow;
+  uniform vec3 uGlowSunnie;
+  uniform float uTime;
+  varying float vAlpha;
+  varying float vSunnie;
+
+  void main() {
+    if (vAlpha < 0.01) discard;
+    float d = length(gl_PointCoord - 0.5) * 2.0;
+    if (d > 1.0) discard;
+    float a = pow(1.0 - smoothstep(0.0, 1.0, d), 2.0) * vAlpha * 0.2;
+    vec3 c = mix(uGlow, uGlowSunnie, vSunnie);
+    gl_FragColor = vec4(c, a);
   }
 `;
 
 const leafVert = `
   attribute float aGrowTime;
   attribute float aPhase;
+  attribute float aIsSunnie;
   uniform float uTime;
   uniform float uGrowth;
   varying float vAlpha;
   varying float vPhase;
+  varying float vSunnie;
 
   void main() {
-    // Leaves fade in after their branch has grown
-    float grow = smoothstep(aGrowTime, aGrowTime + 0.05, uGrowth);
+    float grow = smoothstep(aGrowTime, aGrowTime + 0.06, uGrowth);
     vAlpha = grow;
     vPhase = aPhase;
+    vSunnie = aIsSunnie;
 
     vec3 pos = position;
-    pos.x += sin(uTime * 2.5 + aPhase * 6.28) * 0.2 * grow;
-    pos.y += cos(uTime * 1.8 + aPhase * 4.0) * 0.12 * grow;
-    pos.z += sin(uTime * 1.3 + aPhase * 5.0) * 0.15 * grow;
+    pos.x += sin(uTime * 2.2 + aPhase * 6.28) * 0.18 * grow;
+    pos.y += cos(uTime * 1.6 + aPhase * 4.0) * 0.10 * grow;
+    pos.z += sin(uTime * 1.1 + aPhase * 5.0) * 0.13 * grow;
 
     vec4 mv = modelViewMatrix * vec4(pos, 1.0);
     float dist = -mv.z;
-    gl_PointSize = (120.0 + 60.0 * sin(aPhase * 6.28)) / dist * grow;
+    gl_PointSize = (100.0 + 50.0 * sin(aPhase * 6.28)) / dist * grow;
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -302,129 +616,84 @@ const leafVert = `
 const leafFrag = `
   uniform vec3 uLeaf;
   uniform vec3 uLeafAlt;
+  uniform vec3 uLeafSunnie;
+  uniform vec3 uLeafSunnieAlt;
   uniform float uTime;
   varying float vAlpha;
   varying float vPhase;
+  varying float vSunnie;
 
   void main() {
     if (vAlpha < 0.01) discard;
     float d = length(gl_PointCoord - 0.5) * 2.0;
     if (d > 1.0) discard;
 
-    float a = (1.0 - smoothstep(0.0, 0.9, d)) * vAlpha * 0.35;
-    vec3 c = mix(uLeaf, uLeafAlt, vPhase);
-    c *= 0.85 + 0.15 * sin(uTime * 3.0 + vPhase * 10.0);
+    float a = (1.0 - smoothstep(0.0, 0.85, d)) * vAlpha * 0.4;
+    vec3 c1 = mix(uLeaf, uLeafSunnie, vSunnie);
+    vec3 c2 = mix(uLeafAlt, uLeafSunnieAlt, vSunnie);
+    vec3 c = mix(c1, c2, vPhase);
+    c *= 0.85 + 0.15 * sin(uTime * 2.5 + vPhase * 10.0);
     gl_FragColor = vec4(c, a);
   }
 `;
 
-// ─── GLOW POINTS for branch nodes ───
-const glowVert = `
-  attribute float aDepth;
-  attribute float aGrowTime;
-  attribute float aSize;
-  uniform float uTime;
-  uniform float uGrowth;
-  varying float vAlpha;
-  varying float vDepth;
-
-  void main() {
-    float grow = clamp((uGrowth - aGrowTime) / 0.03, 0.0, 1.0);
-    vAlpha = grow;
-    vDepth = aDepth;
-
-    vec3 pos = position;
-    float swayAmt = aDepth / 8.0 * 0.25 * grow;
-    pos.x += sin(uTime * 0.7 + pos.y * 0.3) * swayAmt;
-    pos.z += cos(uTime * 0.5 + pos.y * 0.25) * swayAmt * 0.5;
-
-    vec4 mv = modelViewMatrix * vec4(pos, 1.0);
-    gl_PointSize = aSize * 300.0 / -mv.z * grow;
-    gl_Position = projectionMatrix * mv;
-  }
-`;
-
-const glowFrag = `
-  uniform vec3 uGlow;
-  uniform float uTime;
-  varying float vAlpha;
-  varying float vDepth;
-
-  void main() {
-    if (vAlpha < 0.01) discard;
-    float d = length(gl_PointCoord - 0.5) * 2.0;
-    if (d > 1.0) discard;
-
-    float a = (1.0 - smoothstep(0.0, 1.0, d));
-    a = pow(a, 2.0) * vAlpha * 0.15;
-
-    float t = vDepth / 8.0;
-    a *= (0.3 + 0.7 * t); // glow more at tips
-
-    gl_FragColor = vec4(uGlow, a);
-  }
-`;
-
 // ─── BACKGROUND ───
-// Render as a separate scene before the composer, using shared render target
 const bgScene = new THREE.Scene();
-const bgCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const bgCamera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
 const bgMat = new THREE.ShaderMaterial({
   depthWrite: false,
-  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  vertexShader: `varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}`,
   fragmentShader: `
     uniform float uTime;
     varying vec2 vUv;
-    void main() {
-      vec2 center = vec2(vUv.x - 0.5, (vUv.y - 0.35));
-      float d = length(center);
-      vec3 inner = vec3(0.08, 0.05, 0.025);
-      vec3 outer = vec3(0.015, 0.01, 0.008);
-      vec3 color = mix(inner, outer, smoothstep(0.0, 0.6, d));
-      color *= 0.95 + 0.05 * sin(uTime * 0.3);
-      gl_FragColor = vec4(color, 1.0);
+    void main(){
+      vec2 c=vec2(vUv.x-0.5,(vUv.y-0.35));
+      float d=length(c);
+      vec3 inner=vec3(0.06,0.04,0.02);
+      vec3 outer=vec3(0.012,0.008,0.005);
+      vec3 col=mix(inner,outer,smoothstep(0.0,0.6,d));
+      col*=0.95+0.05*sin(uTime*0.3);
+      gl_FragColor=vec4(col,1.0);
     }
   `,
   uniforms: { uTime: { value: 0 } }
 });
-bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat));
+bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), bgMat));
 
 // ─── POST-PROCESSING ───
 const composer = new EffectComposer(renderer);
-const bgRenderPass = new RenderPass(bgScene, bgCamera);
-bgRenderPass.clear = true;
-composer.addPass(bgRenderPass);
-const mainRenderPass = new RenderPass(scene, camera);
-mainRenderPass.clear = false;
-mainRenderPass.clearDepth = true;
-composer.addPass(mainRenderPass);
+const bgPass = new RenderPass(bgScene, bgCamera);
+bgPass.clear = true;
+composer.addPass(bgPass);
+const mainPass = new RenderPass(scene, camera);
+mainPass.clear = false;
+mainPass.clearDepth = true;
+composer.addPass(mainPass);
 
 const bloom = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.2, 0.6, 0.5
+  0.4, 0.5, 0.4
 );
 composer.addPass(bloom);
 
 const chromatic = new ShaderPass({
   uniforms: {
     tDiffuse: { value: null },
-    uStrength: { value: 0.0015 }
+    uStrength: { value: 0.001 }
   },
-  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
   fragmentShader: `
     uniform sampler2D tDiffuse;
     uniform float uStrength;
     varying vec2 vUv;
-    void main() {
-      vec2 dir = vUv - 0.5;
-      float d = length(dir) * uStrength;
-      vec2 off = dir * d;
-      gl_FragColor = vec4(
-        texture2D(tDiffuse, vUv + off).r,
-        texture2D(tDiffuse, vUv).g,
-        texture2D(tDiffuse, vUv - off).b,
-        1.0
-      );
+    void main(){
+      vec2 dir=vUv-0.5;
+      float d=length(dir)*uStrength;
+      vec2 off=dir*d;
+      gl_FragColor=vec4(
+        texture2D(tDiffuse,vUv+off).r,
+        texture2D(tDiffuse,vUv).g,
+        texture2D(tDiffuse,vUv-off).b,1.0);
     }
   `
 });
@@ -432,155 +701,210 @@ composer.addPass(chromatic);
 composer.addPass(new OutputPass());
 
 // ─── INIT ───
-let lineMat, leafMat, glowMat;
-
 async function init() {
-  const hash = await fetchBlockHash();
-  const params = hashToParams(hash);
-  const builder = new TreeBuilder(params);
-  const { segments, leaves, maxOrder } = builder.build();
-
-  // ── Compute growTime based on depth + segment position (breadth-first growth) ──
-  // depth 0 grows first, then depth 1, etc. segIdx adds sub-ordering within each branch.
-  const maxGrowRaw = CONFIG.maxDepth + 1;
+  const hash = await fetchHash();
+  const hp = hashToParams(hash);
+  const { segs, lvs, gpts, conns } = buildTree(hp);
 
   // ── Branch lines ──
-  const linePositions = [];
-  const lineDepths = [];
-  const lineGrowTimes = [];
-  const lineIsEnd = [];
-  const lineStartPos = [];
-
-  for (const seg of segments) {
-    const growTime = (seg.depth + seg.segIdx * 0.8) / maxGrowRaw;
-    // Start vertex
-    linePositions.push(seg.start.x, seg.start.y, seg.start.z);
-    lineStartPos.push(seg.start.x, seg.start.y, seg.start.z);
-    lineDepths.push(seg.depth);
-    lineGrowTimes.push(growTime);
-    lineIsEnd.push(0);
-    // End vertex
-    linePositions.push(seg.end.x, seg.end.y, seg.end.z);
-    lineStartPos.push(seg.start.x, seg.start.y, seg.start.z);
-    lineDepths.push(seg.depth);
-    lineGrowTimes.push(growTime);
-    lineIsEnd.push(1);
+  const lPos=[], lStart=[], lDepth=[], lGrow=[], lEnd=[], lSun=[];
+  for (const s of segs) {
+    const gt = s.gt ?? (s.d + s.si * 0.8) / 10;
+    // Use branch origin (bo) so ungrown segments collapse to trunk attachment
+    // Trunk segments (d=0) collapse to their own start
+    const origin = s.bo ?? s.s;
+    // start vertex
+    lPos.push(s.s.x,s.s.y,s.s.z);
+    lStart.push(origin.x,origin.y,origin.z);
+    lDepth.push(s.d); lGrow.push(gt); lEnd.push(0); lSun.push(s.sun?1:0);
+    // end vertex
+    lPos.push(s.e.x,s.e.y,s.e.z);
+    lStart.push(origin.x,origin.y,origin.z);
+    lDepth.push(s.d); lGrow.push(gt); lEnd.push(1); lSun.push(s.sun?1:0);
   }
 
   const lineGeo = new THREE.BufferGeometry();
-  lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
-  lineGeo.setAttribute('aDepth', new THREE.Float32BufferAttribute(lineDepths, 1));
-  lineGeo.setAttribute('aGrowTime', new THREE.Float32BufferAttribute(lineGrowTimes, 1));
-  lineGeo.setAttribute('aIsEnd', new THREE.Float32BufferAttribute(lineIsEnd, 1));
-  lineGeo.setAttribute('aStartPos', new THREE.Float32BufferAttribute(lineStartPos, 3));
+  lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(lPos, 3));
+  lineGeo.setAttribute('aStartPos', new THREE.Float32BufferAttribute(lStart, 3));
+  lineGeo.setAttribute('aDepth', new THREE.Float32BufferAttribute(lDepth, 1));
+  lineGeo.setAttribute('aGrowTime', new THREE.Float32BufferAttribute(lGrow, 1));
+  lineGeo.setAttribute('aIsEnd', new THREE.Float32BufferAttribute(lEnd, 1));
+  lineGeo.setAttribute('aIsSunnie', new THREE.Float32BufferAttribute(lSun, 1));
 
-  lineMat = new THREE.ShaderMaterial({
-    vertexShader: lineVert,
-    fragmentShader: lineFrag,
+  const lineMat = new THREE.ShaderMaterial({
+    vertexShader: lineVert, fragmentShader: lineFrag,
     uniforms: {
-      uTime: { value: 0 },
-      uGrowth: { value: 0 },
-      uTrunk: { value: CONFIG.palette.trunk },
-      uMid: { value: CONFIG.palette.mid },
-      uTip: { value: CONFIG.palette.tip },
+      uTime:{value:0}, uGrowth:{value:0},
+      uTrunk:{value:PAL.trunk}, uMid:{value:PAL.mid}, uTip:{value:PAL.tip},
+      uSunnie:{value:PAL.sun}, uSunnieTip:{value:PAL.sunTip},
     },
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
   });
-
   scene.add(new THREE.LineSegments(lineGeo, lineMat));
 
-  // ── Glow points at branch joints ──
-  const glowPos = [];
-  const glowDepths = [];
-  const glowGrowTimes = [];
-  const glowSizes = [];
-
-  for (const seg of segments) {
-    const growTime = (seg.depth + seg.segIdx * 0.8) / maxGrowRaw;
-    glowPos.push(seg.end.x, seg.end.y, seg.end.z);
-    glowDepths.push(seg.depth);
-    glowGrowTimes.push(growTime);
-    glowSizes.push(seg.thickness * 1.5);
+  // ── Glow points ──
+  const gPos=[], gDepth=[], gGrow=[], gSize=[], gSun=[], gOrigin=[];
+  for (const g of gpts) {
+    const gt = g.gt ?? (g.d + 0.5) / 10;
+    const bo = g.bo ?? g.p;
+    gPos.push(g.p.x,g.p.y,g.p.z);
+    gOrigin.push(bo.x,bo.y,bo.z);
+    gDepth.push(g.d); gGrow.push(gt); gSize.push(g.sz); gSun.push(g.sun?1:0);
   }
 
   const glowGeo = new THREE.BufferGeometry();
-  glowGeo.setAttribute('position', new THREE.Float32BufferAttribute(glowPos, 3));
-  glowGeo.setAttribute('aDepth', new THREE.Float32BufferAttribute(glowDepths, 1));
-  glowGeo.setAttribute('aGrowTime', new THREE.Float32BufferAttribute(glowGrowTimes, 1));
-  glowGeo.setAttribute('aSize', new THREE.Float32BufferAttribute(glowSizes, 1));
+  glowGeo.setAttribute('position', new THREE.Float32BufferAttribute(gPos, 3));
+  glowGeo.setAttribute('aBranchOrigin', new THREE.Float32BufferAttribute(gOrigin, 3));
+  glowGeo.setAttribute('aDepth', new THREE.Float32BufferAttribute(gDepth, 1));
+  glowGeo.setAttribute('aGrowTime', new THREE.Float32BufferAttribute(gGrow, 1));
+  glowGeo.setAttribute('aSize', new THREE.Float32BufferAttribute(gSize, 1));
+  glowGeo.setAttribute('aIsSunnie', new THREE.Float32BufferAttribute(gSun, 1));
 
-  glowMat = new THREE.ShaderMaterial({
-    vertexShader: glowVert,
-    fragmentShader: glowFrag,
+  const glowMat = new THREE.ShaderMaterial({
+    vertexShader: glowVert, fragmentShader: glowFrag,
     uniforms: {
-      uTime: { value: 0 },
-      uGrowth: { value: 0 },
-      uGlow: { value: CONFIG.palette.glow },
+      uTime:{value:0}, uGrowth:{value:0},
+      uGlow:{value:PAL.glow}, uGlowSunnie:{value:PAL.glowS},
     },
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
   });
-
   scene.add(new THREE.Points(glowGeo, glowMat));
 
   // ── Leaves ──
-  const leafPos = [];
-  const leafGrowTimes = [];
-  const leafPhases = [];
-
-  for (const l of leaves) {
-    leafPos.push(l.position.x, l.position.y, l.position.z);
-    leafGrowTimes.push((CONFIG.maxDepth - 0.5) / maxGrowRaw); // appear near end of growth
-    leafPhases.push(l.phase);
+  const leafP=[], leafG=[], leafPh=[], leafS=[];
+  for (const l of lvs) {
+    leafP.push(l.p.x,l.p.y,l.p.z);
+    leafG.push(l.gt ?? 0.85);
+    leafPh.push(l.ph);
+    leafS.push(l.sun?1:0);
   }
 
   const leafGeo = new THREE.BufferGeometry();
-  leafGeo.setAttribute('position', new THREE.Float32BufferAttribute(leafPos, 3));
-  leafGeo.setAttribute('aGrowTime', new THREE.Float32BufferAttribute(leafGrowTimes, 1));
-  leafGeo.setAttribute('aPhase', new THREE.Float32BufferAttribute(leafPhases, 1));
+  leafGeo.setAttribute('position', new THREE.Float32BufferAttribute(leafP, 3));
+  leafGeo.setAttribute('aGrowTime', new THREE.Float32BufferAttribute(leafG, 1));
+  leafGeo.setAttribute('aPhase', new THREE.Float32BufferAttribute(leafPh, 1));
+  leafGeo.setAttribute('aIsSunnie', new THREE.Float32BufferAttribute(leafS, 1));
 
-  leafMat = new THREE.ShaderMaterial({
-    vertexShader: leafVert,
-    fragmentShader: leafFrag,
+  const leafMat = new THREE.ShaderMaterial({
+    vertexShader: leafVert, fragmentShader: leafFrag,
     uniforms: {
-      uTime: { value: 0 },
-      uGrowth: { value: 0 },
-      uLeaf: { value: CONFIG.palette.leaf },
-      uLeafAlt: { value: CONFIG.palette.leafAlt },
+      uTime:{value:0}, uGrowth:{value:0},
+      uLeaf:{value:new THREE.Color('#ffaa44')},
+      uLeafAlt:{value:new THREE.Color('#ffcc66')},
+      uLeafSunnie:{value:new THREE.Color('#22ccaa')},
+      uLeafSunnieAlt:{value:new THREE.Color('#55eebb')},
     },
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
   });
-
   scene.add(new THREE.Points(leafGeo, leafMat));
 
-  // HUD
-  const shortHash = hash.slice(0, 16) + '…';
+  const allMats = [lineMat, glowMat, leafMat];
+
+  // ── Connection energy streams — animated dashed lines between branches ──
+  if (conns.length > 0) {
+    const cPos = [], cT = [], cWeight = [], cSun = [], cGrow = [];
+    for (const c of conns) {
+      // Start vertex
+      cPos.push(c.s.x, c.s.y, c.s.z);
+      cT.push(c.t0);
+      cWeight.push(c.w); cSun.push(c.sun?1:0); cGrow.push(c.gt);
+      // End vertex
+      cPos.push(c.e.x, c.e.y, c.e.z);
+      cT.push(c.t1);
+      cWeight.push(c.w); cSun.push(c.sun?1:0); cGrow.push(c.gt);
+    }
+    const connGeo = new THREE.BufferGeometry();
+    connGeo.setAttribute('position', new THREE.Float32BufferAttribute(cPos, 3));
+    connGeo.setAttribute('aArcT', new THREE.Float32BufferAttribute(cT, 1));
+    connGeo.setAttribute('aWeight', new THREE.Float32BufferAttribute(cWeight, 1));
+    connGeo.setAttribute('aIsSunnie', new THREE.Float32BufferAttribute(cSun, 1));
+    connGeo.setAttribute('aGrowTime', new THREE.Float32BufferAttribute(cGrow, 1));
+
+    const connMat = new THREE.ShaderMaterial({
+      vertexShader: `
+        attribute float aArcT;
+        attribute float aWeight;
+        attribute float aIsSunnie;
+        attribute float aGrowTime;
+        uniform float uTime;
+        uniform float uGrowth;
+        varying float vArcT;
+        varying float vWeight;
+        varying float vSunnie;
+        varying float vAppear;
+        void main() {
+          vArcT = aArcT;
+          vWeight = aWeight;
+          vSunnie = aIsSunnie;
+          vAppear = smoothstep(aGrowTime, aGrowTime + 0.06, uGrowth);
+          vec3 pos = position;
+          // Perpendicular noise wiggle — organic oscillation
+          float wiggle = sin(aArcT * 12.0 + uTime * 1.5) * 0.15
+                       + sin(aArcT * 7.0 - uTime * 0.8) * 0.08;
+          wiggle *= sin(aArcT * 3.14159) * vAppear; // fade at endpoints
+          pos.x += wiggle * cos(aArcT * 6.28);
+          pos.z += wiggle * sin(aArcT * 6.28);
+          pos.y += sin(aArcT * 5.0 + uTime * 1.2) * 0.06 * vAppear;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        varying float vArcT;
+        varying float vWeight;
+        varying float vSunnie;
+        varying float vAppear;
+        void main() {
+          if (vAppear < 0.01) discard;
+          // Dual flow pattern — two sine waves create complex energy flow
+          float flow1 = sin(vArcT * 20.0 - uTime * 3.5);
+          float flow2 = sin(vArcT * 12.0 - uTime * 2.0 + 1.57);
+          float combined = max(flow1, flow2);
+          float brightness = smoothstep(-0.2, 0.6, combined);
+          // Base trace always slightly visible
+          float baseGlow = 0.04 * vWeight;
+          float alpha = vAppear * (baseGlow + brightness * (0.1 + 0.15 * vWeight));
+          if (alpha < 0.01) discard;
+          // Subtle color modulation along the arc
+          float colorShift = 0.9 + 0.1 * sin(uTime * 0.5 + vArcT * 8.0);
+          vec3 c = mix(vec3(1.0, 0.8, 0.55), vec3(0.25, 1.0, 0.85), vSunnie);
+          c *= colorShift;
+          gl_FragColor = vec4(c, alpha);
+        }
+      `,
+      uniforms: {
+        uTime: { value: 0 },
+        uGrowth: { value: 0 },
+      },
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    scene.add(new THREE.LineSegments(connGeo, connMat));
+    allMats.push(connMat);
+  }
+
+  // ── HUD ──
+  const shortHash = hash.replace(/^0+/,'').slice(0,12) + '…';
+  const nConns = conns.length / 12; // 12 segments per connection arc
   document.getElementById('info').innerHTML =
-    `HASH TREE<br>` +
-    `block: ${shortHash}<br>` +
-    `branches: ${segments.length} · leaves: ${leaves.length}<br>` +
-    `depth: ${CONFIG.maxDepth} · angle: ${(params.branchAngle * 180 / Math.PI).toFixed(1)}°` +
-    ` · children: ${params.nBranches}`;
+    `HASH TREE — <span class="sunnie">TreeChat Community</span><br>` +
+    `block ${TC_META.height} · ${shortHash}<br>` +
+    `${TC_META.posts.toLocaleString()} posts · ${TC_META.users} users · ${TC_META.days} days<br>` +
+    `${segs.length} branches · ${lvs.length} leaves · ${Math.round(nConns)} connections<br>` +
+    `<span class="sunnie">■</span> Sunnie · 285 posts · 14.36M sats received<br>` +
+    `branch thickness = posts × 0.4 + tips × 0.6`;
 
   // ── Animate ──
   const clock = new THREE.Clock();
+
   function animate() {
     requestAnimationFrame(animate);
     const t = clock.getElapsedTime();
-    const growth = Math.min(t / CONFIG.growthDuration, 1.0);
+    const growth = Math.min(t / GROW_DUR, 1.0);
 
-    const uniforms = { uTime: t, uGrowth: growth };
-    for (const mat of [lineMat, leafMat, glowMat]) {
-      if (!mat) continue;
-      mat.uniforms.uTime.value = t;
-      mat.uniforms.uGrowth.value = growth;
+    for (const m of allMats) {
+      m.uniforms.uTime.value = t;
+      m.uniforms.uGrowth.value = growth;
     }
-
     bgMat.uniforms.uTime.value = t;
     controls.update();
     composer.render();
