@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Hash Tree v3 — TreeChat Community</title>
+<title>Hash Tree v4 — TreeChat Community</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #000; overflow: hidden; }
@@ -13,10 +13,61 @@
     pointer-events: none; line-height: 1.6;
   }
   #info .sunnie { color: rgba(34,204,170,0.7); }
+  #search-panel {
+    position: absolute; top: 16px; right: 16px;
+    z-index: 20;
+  }
+  #search-input {
+    background: rgba(0,0,0,0.6); border: 1px solid rgba(255,170,68,0.3);
+    color: #ffaa44; font: 13px monospace; padding: 6px 10px;
+    width: 200px; border-radius: 4px; outline: none;
+  }
+  #search-input::placeholder { color: rgba(255,170,68,0.3); }
+  #search-input:focus { border-color: rgba(255,170,68,0.6); }
+  #search-results {
+    background: rgba(0,0,0,0.8); border: 1px solid rgba(255,170,68,0.2);
+    border-top: none; border-radius: 0 0 4px 4px; max-height: 240px;
+    overflow-y: auto; display: none;
+  }
+  .search-item {
+    padding: 5px 10px; color: rgba(255,170,68,0.7); font: 12px monospace;
+    cursor: pointer;
+  }
+  .search-item:hover, .search-item.active { background: rgba(255,170,68,0.12); color: #ffcc66; }
+  .search-item .sats { color: rgba(255,170,68,0.35); font-size: 10px; }
+  .search-item.sunnie-item { color: rgba(34,204,170,0.8); }
+  .search-item.sunnie-item:hover { color: #66ffd8; }
+  #selected-info {
+    position: absolute; top: 60px; right: 16px;
+    color: rgba(255,170,68,0.7); font: 11px monospace;
+    background: rgba(0,0,0,0.5); padding: 8px 12px;
+    border-radius: 4px; display: none; z-index: 20;
+    max-width: 220px; line-height: 1.5;
+  }
+  #selected-info .name { color: #ffcc66; font-size: 13px; }
+  #selected-info .sunnie-name { color: #66ffd8; }
+  #speed-control {
+    position: absolute; bottom: 20px; right: 16px;
+    z-index: 20; display: flex; align-items: center; gap: 8px;
+  }
+  #speed-control label { color: rgba(255,170,68,0.3); font: 10px monospace; }
+  #speed-slider {
+    width: 80px; accent-color: #ffaa44; opacity: 0.5;
+  }
+  #speed-slider:hover { opacity: 0.8; }
 </style>
 </head>
 <body>
 <div id="info">loading...</div>
+<div id="search-panel">
+  <input id="search-input" type="text" placeholder="find a branch..." autocomplete="off">
+  <div id="search-results"></div>
+</div>
+<div id="selected-info"></div>
+<div id="speed-control">
+  <label>rotation</label>
+  <input id="speed-slider" type="range" min="0" max="100" value="15">
+</div>
 
 <script type="importmap">
 {
@@ -279,7 +330,7 @@ function buildTree(hp) {
   order = 1;
 
   // Branch helper
-  function branch(orig, dir, len, thick, depth, isSun, userData, subI, parentEndGT) {
+  function branch(orig, dir, len, thick, depth, isSun, userData, subI, parentEndGT, userIdx) {
     if (depth > MAX_SUB || len < 0.2) return;
     const nSeg = Math.max(3, 6 - depth);
     const segL = len / nSeg;
@@ -321,12 +372,12 @@ function buildTree(hp) {
         bo: branchOrigin,
         d: depth, o: ord, th: thick,
         si: i/nSeg, sun: isSun,
-        gt: segGT,
+        gt: segGT, ui: userIdx ?? -1,
       });
       gpts.push({
         p: next.clone(), d: depth, o: ord,
         sz: thick * 1.2, sun: isSun,
-        gt: segGT,
+        gt: segGT, ui: userIdx ?? -1,
         bo: branchOrigin,
       });
       pos = next;
@@ -355,9 +406,9 @@ function buildTree(hp) {
         const sd = new THREE.Vector3(
           Math.cos(a), 0.06 + 0.14*seed, Math.sin(a)
         ).normalize();
-        // Pass branchEndGT as 9th argument so children start after parent
+        // Pass branchEndGT so children start after parent
         branch(pos.clone(), sd, len*(0.32+0.15*seed),
-               thick*0.5, depth+1, isSun, null, i, branchEndGT);
+               thick*0.5, depth+1, isSun, null, i, branchEndGT, userIdx);
       }
     }
 
@@ -374,7 +425,7 @@ function buildTree(hp) {
           (Math.random()-0.5)*spread
         )),
         o: ord, ph: Math.random(), sun: isSun,
-        gt: branchEndGT + 0.02,
+        gt: branchEndGT + 0.02, ui: userIdx ?? -1,
       });
     }
   }
@@ -406,7 +457,7 @@ function buildTree(hp) {
       Math.cos(angle), upB, Math.sin(angle)
     ).normalize();
 
-    branch(origin, dir, len, thick, 1, isSun, u, 0);
+    branch(origin, dir, len, thick, 1, isSun, u, 0, undefined, idx);
   });
 
   // Build connection arcs as line segments for flowing dash effect
@@ -466,7 +517,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.autoRotate = true;
-controls.autoRotateSpeed = 0.5;
+controls.autoRotateSpeed = 0.15;
 controls.target.set(0, 9, 0);
 controls.minDistance = 8;
 controls.maxDistance = 60;
@@ -477,19 +528,23 @@ const lineVert = `
   attribute float aGrowTime;
   attribute float aIsEnd;
   attribute float aIsSunnie;
+  attribute float aUserIdx;
   attribute vec3 aStartPos;
   uniform float uTime;
   uniform float uGrowth;
+  uniform float uSelectedUser;
   varying float vDepth;
   varying float vGrow;
   varying float vFog;
   varying float vSunnie;
+  varying float vSelected;
 
   void main() {
     float segGrow = clamp((uGrowth - aGrowTime) / 0.04, 0.0, 1.0);
     vGrow = segGrow;
     vDepth = aDepth;
     vSunnie = aIsSunnie;
+    vSelected = (uSelectedUser >= 0.0 && abs(aUserIdx - uSelectedUser) < 0.5) ? 1.0 : 0.0;
 
     // Both start and end vertices grow outward from branch origin
     vec3 pos = mix(aStartPos, position, segGrow);
@@ -508,6 +563,7 @@ const lineVert = `
 
 const lineFrag = `
   uniform float uTime;
+  uniform float uSelectedUser;
   uniform vec3 uTrunk;
   uniform vec3 uMid;
   uniform vec3 uTip;
@@ -517,6 +573,7 @@ const lineFrag = `
   varying float vGrow;
   varying float vFog;
   varying float vSunnie;
+  varying float vSelected;
 
   void main() {
     if (vGrow < 0.01) discard;
@@ -534,6 +591,19 @@ const lineFrag = `
     color *= pulse;
 
     float alpha = vGrow * vFog * (0.55 - t * 0.15);
+
+    // Selection: dim unselected, brighten selected
+    if (uSelectedUser >= 0.0) {
+      if (vSelected > 0.5) {
+        color *= 1.8;
+        alpha *= 2.5;
+        // Pulse highlight
+        color += vec3(0.15) * sin(uTime * 4.0) * 0.5 + 0.5;
+      } else {
+        alpha *= 0.12;
+      }
+    }
+
     gl_FragColor = vec4(color, alpha);
   }
 `;
@@ -543,14 +613,18 @@ const glowVert = `
   attribute float aGrowTime;
   attribute float aSize;
   attribute float aIsSunnie;
+  attribute float aUserIdx;
   attribute vec3 aBranchOrigin;
   uniform float uTime;
   uniform float uGrowth;
+  uniform float uSelectedUser;
   varying float vAlpha;
   varying float vSunnie;
+  varying float vSelected;
 
   void main() {
     float grow = clamp((uGrowth - aGrowTime) / 0.04, 0.0, 1.0);
+    vSelected = (uSelectedUser >= 0.0 && abs(aUserIdx - uSelectedUser) < 0.5) ? 1.0 : 0.0;
     vAlpha = grow;
     vSunnie = aIsSunnie;
 
@@ -572,8 +646,10 @@ const glowFrag = `
   uniform vec3 uGlow;
   uniform vec3 uGlowSunnie;
   uniform float uTime;
+  uniform float uSelectedUser;
   varying float vAlpha;
   varying float vSunnie;
+  varying float vSelected;
 
   void main() {
     if (vAlpha < 0.01) discard;
@@ -581,6 +657,9 @@ const glowFrag = `
     if (d > 1.0) discard;
     float a = pow(1.0 - smoothstep(0.0, 1.0, d), 2.0) * vAlpha * 0.2;
     vec3 c = mix(uGlow, uGlowSunnie, vSunnie);
+    if (uSelectedUser >= 0.0) {
+      a *= vSelected > 0.5 ? 3.0 : 0.08;
+    }
     gl_FragColor = vec4(c, a);
   }
 `;
@@ -589,14 +668,18 @@ const leafVert = `
   attribute float aGrowTime;
   attribute float aPhase;
   attribute float aIsSunnie;
+  attribute float aUserIdx;
   uniform float uTime;
   uniform float uGrowth;
+  uniform float uSelectedUser;
   varying float vAlpha;
   varying float vPhase;
   varying float vSunnie;
+  varying float vSelected;
 
   void main() {
     float grow = smoothstep(aGrowTime, aGrowTime + 0.06, uGrowth);
+    vSelected = (uSelectedUser >= 0.0 && abs(aUserIdx - uSelectedUser) < 0.5) ? 1.0 : 0.0;
     vAlpha = grow;
     vPhase = aPhase;
     vSunnie = aIsSunnie;
@@ -619,9 +702,11 @@ const leafFrag = `
   uniform vec3 uLeafSunnie;
   uniform vec3 uLeafSunnieAlt;
   uniform float uTime;
+  uniform float uSelectedUser;
   varying float vAlpha;
   varying float vPhase;
   varying float vSunnie;
+  varying float vSelected;
 
   void main() {
     if (vAlpha < 0.01) discard;
@@ -633,6 +718,9 @@ const leafFrag = `
     vec3 c2 = mix(uLeafAlt, uLeafSunnieAlt, vSunnie);
     vec3 c = mix(c1, c2, vPhase);
     c *= 0.85 + 0.15 * sin(uTime * 2.5 + vPhase * 10.0);
+    if (uSelectedUser >= 0.0) {
+      a *= vSelected > 0.5 ? 2.5 : 0.06;
+    }
     gl_FragColor = vec4(c, a);
   }
 `;
@@ -707,20 +795,18 @@ async function init() {
   const { segs, lvs, gpts, conns } = buildTree(hp);
 
   // ── Branch lines ──
-  const lPos=[], lStart=[], lDepth=[], lGrow=[], lEnd=[], lSun=[];
+  const lPos=[], lStart=[], lDepth=[], lGrow=[], lEnd=[], lSun=[], lUi=[];
   for (const s of segs) {
     const gt = s.gt ?? (s.d + s.si * 0.8) / 10;
-    // Use branch origin (bo) so ungrown segments collapse to trunk attachment
-    // Trunk segments (d=0) collapse to their own start
     const origin = s.bo ?? s.s;
     // start vertex
     lPos.push(s.s.x,s.s.y,s.s.z);
     lStart.push(origin.x,origin.y,origin.z);
-    lDepth.push(s.d); lGrow.push(gt); lEnd.push(0); lSun.push(s.sun?1:0);
+    lDepth.push(s.d); lGrow.push(gt); lEnd.push(0); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1);
     // end vertex
     lPos.push(s.e.x,s.e.y,s.e.z);
     lStart.push(origin.x,origin.y,origin.z);
-    lDepth.push(s.d); lGrow.push(gt); lEnd.push(1); lSun.push(s.sun?1:0);
+    lDepth.push(s.d); lGrow.push(gt); lEnd.push(1); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1);
   }
 
   const lineGeo = new THREE.BufferGeometry();
@@ -730,11 +816,12 @@ async function init() {
   lineGeo.setAttribute('aGrowTime', new THREE.Float32BufferAttribute(lGrow, 1));
   lineGeo.setAttribute('aIsEnd', new THREE.Float32BufferAttribute(lEnd, 1));
   lineGeo.setAttribute('aIsSunnie', new THREE.Float32BufferAttribute(lSun, 1));
+  lineGeo.setAttribute('aUserIdx', new THREE.Float32BufferAttribute(lUi, 1));
 
   const lineMat = new THREE.ShaderMaterial({
     vertexShader: lineVert, fragmentShader: lineFrag,
     uniforms: {
-      uTime:{value:0}, uGrowth:{value:0},
+      uTime:{value:0}, uGrowth:{value:0}, uSelectedUser:{value:-1},
       uTrunk:{value:PAL.trunk}, uMid:{value:PAL.mid}, uTip:{value:PAL.tip},
       uSunnie:{value:PAL.sun}, uSunnieTip:{value:PAL.sunTip},
     },
@@ -743,13 +830,13 @@ async function init() {
   scene.add(new THREE.LineSegments(lineGeo, lineMat));
 
   // ── Glow points ──
-  const gPos=[], gDepth=[], gGrow=[], gSize=[], gSun=[], gOrigin=[];
+  const gPos=[], gDepth=[], gGrow=[], gSize=[], gSun=[], gOrigin=[], gUi=[];
   for (const g of gpts) {
     const gt = g.gt ?? (g.d + 0.5) / 10;
     const bo = g.bo ?? g.p;
     gPos.push(g.p.x,g.p.y,g.p.z);
     gOrigin.push(bo.x,bo.y,bo.z);
-    gDepth.push(g.d); gGrow.push(gt); gSize.push(g.sz); gSun.push(g.sun?1:0);
+    gDepth.push(g.d); gGrow.push(gt); gSize.push(g.sz); gSun.push(g.sun?1:0); gUi.push(g.ui ?? -1);
   }
 
   const glowGeo = new THREE.BufferGeometry();
@@ -759,11 +846,12 @@ async function init() {
   glowGeo.setAttribute('aGrowTime', new THREE.Float32BufferAttribute(gGrow, 1));
   glowGeo.setAttribute('aSize', new THREE.Float32BufferAttribute(gSize, 1));
   glowGeo.setAttribute('aIsSunnie', new THREE.Float32BufferAttribute(gSun, 1));
+  glowGeo.setAttribute('aUserIdx', new THREE.Float32BufferAttribute(gUi, 1));
 
   const glowMat = new THREE.ShaderMaterial({
     vertexShader: glowVert, fragmentShader: glowFrag,
     uniforms: {
-      uTime:{value:0}, uGrowth:{value:0},
+      uTime:{value:0}, uGrowth:{value:0}, uSelectedUser:{value:-1},
       uGlow:{value:PAL.glow}, uGlowSunnie:{value:PAL.glowS},
     },
     transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
@@ -771,12 +859,13 @@ async function init() {
   scene.add(new THREE.Points(glowGeo, glowMat));
 
   // ── Leaves ──
-  const leafP=[], leafG=[], leafPh=[], leafS=[];
+  const leafP=[], leafG=[], leafPh=[], leafS=[], leafUi=[];
   for (const l of lvs) {
     leafP.push(l.p.x,l.p.y,l.p.z);
     leafG.push(l.gt ?? 0.85);
     leafPh.push(l.ph);
     leafS.push(l.sun?1:0);
+    leafUi.push(l.ui ?? -1);
   }
 
   const leafGeo = new THREE.BufferGeometry();
@@ -784,11 +873,12 @@ async function init() {
   leafGeo.setAttribute('aGrowTime', new THREE.Float32BufferAttribute(leafG, 1));
   leafGeo.setAttribute('aPhase', new THREE.Float32BufferAttribute(leafPh, 1));
   leafGeo.setAttribute('aIsSunnie', new THREE.Float32BufferAttribute(leafS, 1));
+  leafGeo.setAttribute('aUserIdx', new THREE.Float32BufferAttribute(leafUi, 1));
 
   const leafMat = new THREE.ShaderMaterial({
     vertexShader: leafVert, fragmentShader: leafFrag,
     uniforms: {
-      uTime:{value:0}, uGrowth:{value:0},
+      uTime:{value:0}, uGrowth:{value:0}, uSelectedUser:{value:-1},
       uLeaf:{value:new THREE.Color('#ffaa44')},
       uLeafAlt:{value:new THREE.Color('#ffcc66')},
       uLeafSunnie:{value:new THREE.Color('#22ccaa')},
@@ -892,6 +982,98 @@ async function init() {
     `${segs.length} branches · ${lvs.length} leaves · ${Math.round(nConns)} connections<br>` +
     `<span class="sunnie">■</span> Sunnie · 285 posts · 14.36M sats received<br>` +
     `branch thickness = posts × 0.4 + tips × 0.6`;
+
+  // ── User tip positions for camera focus ──
+  // userTips was built during tree construction — map name→position
+
+  // ── Search & Selection ──
+  let selectedUserIdx = -1;
+  const searchInput = document.getElementById('search-input');
+  const searchResults = document.getElementById('search-results');
+  const selectedInfoEl = document.getElementById('selected-info');
+
+  function formatSats(sats) {
+    if (sats >= 100000000) return (sats / 100000000).toFixed(2) + ' BSV';
+    if (sats >= 1000000) return (sats / 1000000).toFixed(1) + 'M sats';
+    if (sats >= 1000) return (sats / 1000).toFixed(0) + 'K sats';
+    return sats + ' sats';
+  }
+
+  function selectUser(idx) {
+    selectedUserIdx = idx;
+    for (const m of allMats) {
+      if (m.uniforms.uSelectedUser) m.uniforms.uSelectedUser.value = idx;
+    }
+    searchResults.style.display = 'none';
+
+    if (idx >= 0 && idx < TC_USERS.length) {
+      const u = TC_USERS[idx];
+      const tips = TC_TIPS[u.n] || 0;
+      const isSun = u.n === 'Sunnie';
+      selectedInfoEl.innerHTML =
+        `<div class="${isSun ? 'name sunnie-name' : 'name'}">${u.n}</div>` +
+        `${u.p} posts · joined ${u.s}<br>` +
+        (tips > 0 ? `${formatSats(tips)} received<br>` : '') +
+        `<br><span style="opacity:0.4;cursor:pointer" onclick="window._clearSelection()">✕ clear</span>`;
+      selectedInfoEl.style.display = 'block';
+
+      // Camera focus: orbit to face user's branch
+      const tip = userTips[u.n];
+      if (tip) {
+        controls.target.set(tip.x * 0.3, tip.y * 0.8, tip.z * 0.3);
+      }
+    } else {
+      selectedInfoEl.style.display = 'none';
+      controls.target.set(0, 9, 0);
+    }
+  }
+
+  window._clearSelection = () => selectUser(-1);
+
+  searchInput.addEventListener('input', () => {
+    const q = searchInput.value.toLowerCase().trim();
+    if (!q) { searchResults.style.display = 'none'; return; }
+    const matches = TC_USERS
+      .map((u, i) => ({ u, i }))
+      .filter(({ u }) => u.n.toLowerCase().includes(q))
+      .slice(0, 12);
+    if (matches.length === 0) { searchResults.style.display = 'none'; return; }
+    searchResults.innerHTML = matches.map(({ u, i }) => {
+      const tips = TC_TIPS[u.n] || 0;
+      const cls = u.n === 'Sunnie' ? 'search-item sunnie-item' : 'search-item';
+      return `<div class="${cls}" data-idx="${i}">` +
+        `${u.n} <span class="sats">${u.p}p` +
+        (tips > 0 ? ` · ${formatSats(tips)}` : '') +
+        `</span></div>`;
+    }).join('');
+    searchResults.style.display = 'block';
+  });
+
+  searchResults.addEventListener('click', (e) => {
+    const item = e.target.closest('.search-item');
+    if (!item) return;
+    const idx = parseInt(item.dataset.idx);
+    searchInput.value = TC_USERS[idx].n;
+    selectUser(idx);
+  });
+
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      searchResults.style.display = 'none';
+      selectUser(-1);
+    }
+    if (e.key === 'Enter') {
+      const first = searchResults.querySelector('.search-item');
+      if (first) first.click();
+    }
+  });
+
+  // ── Speed slider ──
+  const speedSlider = document.getElementById('speed-slider');
+  speedSlider.addEventListener('input', () => {
+    controls.autoRotateSpeed = (speedSlider.value / 100) * 0.6;
+  });
 
   // ── Animate ──
   const clock = new THREE.Clock();
