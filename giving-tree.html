@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The Giving Tree — TreeChat Tip Economy</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0f; overflow: hidden; font-family: monospace; }
+  canvas { display: block; }
+  #info {
+    position: absolute; bottom: 16px; left: 16px;
+    color: rgba(180,160,130,0.5); font-size: 11px;
+    pointer-events: none; line-height: 1.6;
+  }
+  #info .highlight { color: rgba(255,180,60,0.7); }
+  #info .sunnie { color: rgba(34,204,170,0.6); }
+  #tooltip {
+    position: absolute; display: none;
+    background: rgba(10,10,20,0.92); border: 1px solid rgba(255,180,60,0.3);
+    border-radius: 6px; padding: 10px 14px;
+    color: rgba(255,200,120,0.85); font: 12px monospace;
+    pointer-events: none; z-index: 10; max-width: 260px;
+    line-height: 1.5;
+  }
+  #tooltip .name { font-size: 14px; font-weight: bold; margin-bottom: 4px; }
+  #tooltip .giver { color: #ff8844; }
+  #tooltip .receiver { color: #44ccaa; }
+  #tooltip .balanced { color: #ccaa44; }
+  #tooltip .stat { color: rgba(255,200,120,0.55); font-size: 11px; }
+  #legend {
+    position: absolute; top: 16px; right: 16px;
+    color: rgba(180,160,130,0.5); font-size: 11px;
+    pointer-events: none; line-height: 1.8;
+  }
+  .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">
+  <span class="highlight">The Giving Tree</span> — TreeChat Tip Economy<br>
+  50 users · 314 reply edges · 95,000 tip transactions<br>
+  <span class="sunnie">448 BSV</span> total platform economy<br>
+  Node size = tip activity · Color = giver↔receiver ratio<br>
+  Particles flow from givers toward receivers
+</div>
+<div id="legend">
+  <span class="legend-dot" style="background:#ff6622;"></span>Net giver (patron)<br>
+  <span class="legend-dot" style="background:#ccaa22;"></span>Balanced<br>
+  <span class="legend-dot" style="background:#22ccaa;"></span>Net receiver (creator)<br>
+  <br>
+  Drag to rearrange · Hover for details
+</div>
+<div id="tooltip"></div>
+
+<script>
+const DATA = {"nodes":[{"name":"metamitya","given":6503422981,"received":1257199596,"total":7760622577,"ratio":-0.676,"posts":9859},{"name":"4DToken","given":1672638198,"received":77463734,"total":1750101932,"ratio":-0.911,"posts":1743},{"name":"treefiddy","given":355379696,"received":1144214802,"total":1499594498,"ratio":0.526,"posts":366},{"name":"terrorknowed","given":1232569105,"received":120197064,"total":1352766169,"ratio":-0.822,"posts":84},{"name":"SMARTWATCH","given":55804380,"received":614639748,"total":670444128,"ratio":0.834,"posts":4370},{"name":"brockz","given":639295455,"received":11611565,"total":650907020,"ratio":-0.964,"posts":386},{"name":"Bsvcrypto","given":373360800,"received":259382558,"total":632743358,"ratio":-0.18,"posts":730},{"name":"P2pumper","given":544679975,"received":0,"total":544679975,"ratio":-1.0,"posts":35},{"name":"MarkKordusic","given":512460122,"received":11887918,"total":524348040,"ratio":-0.955,"posts":1258},{"name":"KURO","given":15793000,"received":477764479,"total":493557479,"ratio":0.936,"posts":1322},{"name":"J1 Pelaez","given":226161655,"received":250268687,"total":476430342,"ratio":0.051,"posts":836},{"name":"pxl272","given":253503508,"received":144137522,"total":397641030,"ratio":-0.275,"posts":2257},{"name":"RosaAmargada","given":10198642,"received":369926618,"total":380125260,"ratio":0.946,"posts":4272},{"name":"Brooz","given":100275726,"received":220706469,"total":320982195,"ratio":0.375,"posts":1221},{"name":"3dordi","given":212573599,"received":60379506,"total":272953105,"ratio":-0.558,"posts":301},{"name":"palmbird","given":1844670,"received":230978223,"total":232822893,"ratio":0.984,"posts":4669},{"name":"bridget","given":20269000,"received":203652891,"total":223921891,"ratio":0.819,"posts":1753},{"name":"staub","given":212907451,"received":0,"total":212907451,"ratio":-1.0,"posts":794},{"name":"ArsObKSC","given":54609100,"received":135844233,"total":190453333,"ratio":0.427,"posts":2116},{"name":"SickKevi","given":13735463,"received":170139322,"total":183874785,"ratio":0.851,"posts":233},{"name":"Eva","given":85,"received":175464587,"total":175464672,"ratio":1.0,"posts":65},{"name":"TimJSwan","given":173153500,"received":0,"total":173153500,"ratio":-1.0,"posts":46},{"name":"MBabble","given":121609500,"received":26982718,"total":148592218,"ratio":-0.637,"posts":384},{"name":"Kazi5isAlive","given":34000,"received":131653221,"total":131687221,"ratio":0.999,"posts":413},{"name":"79b","given":131672558,"received":0,"total":131672558,"ratio":-1.0,"posts":1078},{"name":"HolyAngel_X","given":159386,"received":130522777,"total":130682163,"ratio":0.998,"posts":2193},{"name":"BsvGodfather","given":3980020,"received":107349177,"total":111329197,"ratio":0.928,"posts":1948},{"name":"MrWow","given":34000,"received":97390715,"total":97424715,"ratio":0.999,"posts":2434},{"name":"Y","given":46840000,"received":49335544,"total":96175544,"ratio":0.026,"posts":3918},{"name":"arghzero","given":32492889,"received":55781879,"total":88274768,"ratio":0.264,"posts":110190},{"name":"ChefMyKLove","given":3488400,"received":84403773,"total":87892173,"ratio":0.921,"posts":512},{"name":"Truth_Machine","given":86640500,"received":0,"total":86640500,"ratio":-1.0,"posts":97},{"name":"Ralf","given":29495,"received":82816189,"total":82845684,"ratio":0.999,"posts":2685},{"name":"pete","given":81556119,"received":0,"total":81556119,"ratio":-1.0,"posts":188},{"name":"Murkat","given":26225850,"received":34351221,"total":60577071,"ratio":0.134,"posts":864},{"name":"web3bsv","given":11360835,"received":45230585,"total":56591420,"ratio":0.598,"posts":281},{"name":"ruthheasman","given":55449499,"received":0,"total":55449499,"ratio":-1.0,"posts":836},{"name":"1Bitcoin_user","given":20401186,"received":32178884,"total":52580070,"ratio":0.224,"posts":855},{"name":"immortancrow","given":15297470,"received":28293232,"total":43590702,"ratio":0.298,"posts":1225},{"name":"NFT_ProjectBSV","given":323000,"received":42096372,"total":42419372,"ratio":0.985,"posts":749},{"name":"Slashvi","given":2273080,"received":36813545,"total":39086625,"ratio":0.884,"posts":1052},{"name":"The Real Bitcoin","given":93500,"received":36576010,"total":36669510,"ratio":0.995,"posts":93},{"name":"Casey","given":1658829,"received":34614109,"total":36272938,"ratio":0.909,"posts":242},{"name":"bgans","given":94963,"received":34116241,"total":34211204,"ratio":0.994,"posts":2739},{"name":"discord555","given":671500,"received":29278379,"total":29949879,"ratio":0.955,"posts":1028},{"name":"SmilaZ","given":6700947,"received":22712061,"total":29413008,"ratio":0.544,"posts":606},{"name":"ZoideNFT","given":629000,"received":27881631,"total":28510631,"ratio":0.956,"posts":127},{"name":"chryptof","given":2208401,"received":24953611,"total":27162012,"ratio":0.837,"posts":425},{"name":"steffenkd","given":9845061,"received":16952473,"total":26797534,"ratio":0.265,"posts":341},{"name":"HOU","given":1422219,"received":25084712,"total":26506931,"ratio":0.893,"posts":300}],"edges":[{"from":"metamitya","to":"pxl272","replies":230},{"from":"Bsvcrypto","to":"4DToken","replies":212},{"from":"metamitya","to":"Y","replies":203},{"from":"HolyAngel_X","to":"metamitya","replies":188},{"from":"metamitya","to":"ruthheasman","replies":178},{"from":"metamitya","to":"BsvGodfather","replies":169},{"from":"metamitya","to":"SMARTWATCH","replies":165},{"from":"metamitya","to":"RosaAmargada","replies":158},{"from":"metamitya","to":"arghzero","replies":152},{"from":"metamitya","to":"bridget","replies":143},{"from":"pxl272","to":"metamitya","replies":118},{"from":"4DToken","to":"Bsvcrypto","replies":116},{"from":"4DToken","to":"RosaAmargada","replies":106},{"from":"Bsvcrypto","to":"RosaAmargada","replies":104},{"from":"metamitya","to":"HolyAngel_X","replies":99},{"from":"metamitya","to":"palmbird","replies":98},{"from":"RosaAmargada","to":"metamitya","replies":97},{"from":"bridget","to":"metamitya","replies":97},{"from":"MBabble","to":"SMARTWATCH","replies":96},{"from":"Brooz","to":"metamitya","replies":93},{"from":"RosaAmargada","to":"4DToken","replies":90},{"from":"Bsvcrypto","to":"NFT_ProjectBSV","replies":85},{"from":"RosaAmargada","to":"palmbird","replies":81},{"from":"metamitya","to":"Brooz","replies":80},{"from":"metamitya","to":"KURO","replies":79},{"from":"metamitya","to":"79b","replies":77},{"from":"BsvGodfather","to":"metamitya","replies":75},{"from":"J1 Pelaez","to":"KURO","replies":74},{"from":"staub","to":"metamitya","replies":74},{"from":"metamitya","to":"Murkat","replies":72},{"from":"metamitya","to":"ArsObKSC","replies":69},{"from":"metamitya","to":"Kazi5isAlive","replies":69},{"from":"KURO","to":"metamitya","replies":66},{"from":"ruthheasman","to":"metamitya","replies":66},{"from":"RosaAmargada","to":"pxl272","replies":65},{"from":"ArsObKSC","to":"Y","replies":64},{"from":"Y","to":"metamitya","replies":64},{"from":"bridget","to":"ruthheasman","replies":63},{"from":"metamitya","to":"bgans","replies":62},{"from":"RosaAmargada","to":"79b","replies":61},{"from":"bridget","to":"immortancrow","replies":60},{"from":"metamitya","to":"Ralf","replies":60},{"from":"KURO","to":"J1 Pelaez","replies":59},{"from":"staub","to":"pxl272","replies":59},{"from":"palmbird","to":"metamitya","replies":57},{"from":"Slashvi","to":"metamitya","replies":56},{"from":"bridget","to":"arghzero","replies":53},{"from":"metamitya","to":"Slashvi","replies":53},{"from":"79b","to":"RosaAmargada","replies":52},{"from":"MBabble","to":"palmbird","replies":52},{"from":"NFT_ProjectBSV","to":"Bsvcrypto","replies":51},{"from":"Brooz","to":"pxl272","replies":49},{"from":"4DToken","to":"SMARTWATCH","replies":48},{"from":"Brooz","to":"arghzero","replies":48},{"from":"KURO","to":"staub","replies":47},{"from":"pxl272","to":"arghzero","replies":46},{"from":"metamitya","to":"staub","replies":45},{"from":"ArsObKSC","to":"metamitya","replies":43},{"from":"RosaAmargada","to":"SMARTWATCH","replies":43},{"from":"KURO","to":"Brooz","replies":42},{"from":"brockz","to":"RosaAmargada","replies":42},{"from":"Brooz","to":"Y","replies":41},{"from":"HolyAngel_X","to":"palmbird","replies":41},{"from":"J1 Pelaez","to":"4DToken","replies":41},{"from":"Y","to":"ArsObKSC","replies":41},{"from":"SMARTWATCH","to":"pxl272","replies":40},{"from":"pxl272","to":"SMARTWATCH","replies":40},{"from":"79b","to":"palmbird","replies":39},{"from":"immortancrow","to":"bridget","replies":39},{"from":"metamitya","to":"immortancrow","replies":39},{"from":"SMARTWATCH","to":"4DToken","replies":38},{"from":"ruthheasman","to":"bridget","replies":38},{"from":"KURO","to":"RosaAmargada","replies":37},{"from":"metamitya","to":"chryptof","replies":37},{"from":"palmbird","to":"Brooz","replies":37},{"from":"metamitya","to":"discord555","replies":36},{"from":"metamitya","to":"treefiddy","replies":36},{"from":"palmbird","to":"HolyAngel_X","replies":36},{"from":"J1 Pelaez","to":"staub","replies":35},{"from":"bridget","to":"Y","replies":35},{"from":"palmbird","to":"BsvGodfather","replies":35},{"from":"treefiddy","to":"J1 Pelaez","replies":35},{"from":"4DToken","to":"KURO","replies":33},{"from":"Brooz","to":"KURO","replies":33},{"from":"arghzero","to":"metamitya","replies":33},{"from":"metamitya","to":"steffenkd","replies":33},{"from":"ruthheasman","to":"arghzero","replies":33},{"from":"metamitya","to":"J1 Pelaez","replies":32},{"from":"J1 Pelaez","to":"metamitya","replies":31},{"from":"Kazi5isAlive","to":"metamitya","replies":31},{"from":"brockz","to":"BsvGodfather","replies":31},{"from":"pxl272","to":"Brooz","replies":31},{"from":"staub","to":"KURO","replies":31},{"from":"3dordi","to":"J1 Pelaez","replies":30},{"from":"KURO","to":"3dordi","replies":30},{"from":"KURO","to":"SMARTWATCH","replies":30},{"from":"treefiddy","to":"metamitya","replies":30},{"from":"RosaAmargada","to":"Ralf","replies":29},{"from":"brockz","to":"bridget","replies":29},{"from":"metamitya","to":"MrWow","replies":29},{"from":"Brooz","to":"HolyAngel_X","replies":28},{"from":"J1 Pelaez","to":"treefiddy","replies":28},{"from":"KURO","to":"pxl272","replies":28},{"from":"pxl272","to":"RosaAmargada","replies":28},{"from":"staub","to":"J1 Pelaez","replies":28},{"from":"brockz","to":"NFT_ProjectBSV","replies":27},{"from":"HolyAngel_X","to":"BsvGodfather","replies":26},{"from":"SMARTWATCH","to":"metamitya","replies":26},{"from":"treefiddy","to":"staub","replies":26},{"from":"HolyAngel_X","to":"arghzero","replies":25},{"from":"RosaAmargada","to":"arghzero","replies":25},{"from":"RosaAmargada","to":"BsvGodfather","replies":25},{"from":"bgans","to":"metamitya","replies":25},{"from":"metamitya","to":"1Bitcoin_user","replies":25},{"from":"palmbird","to":"79b","replies":25},{"from":"4DToken","to":"J1 Pelaez","replies":24},{"from":"J1 Pelaez","to":"3dordi","replies":24},{"from":"J1 Pelaez","to":"pxl272","replies":24},{"from":"RosaAmargada","to":"Bsvcrypto","replies":24},{"from":"Y","to":"SMARTWATCH","replies":24},{"from":"79b","to":"metamitya","replies":23},{"from":"Brooz","to":"HOU","replies":23},{"from":"RosaAmargada","to":"Slashvi","replies":23},{"from":"SmilaZ","to":"ArsObKSC","replies":23},{"from":"arghzero","to":"RosaAmargada","replies":23},{"from":"metamitya","to":"SickKevi","replies":23},{"from":"pxl272","to":"Y","replies":23},{"from":"4DToken","to":"3dordi","replies":22},{"from":"4DToken","to":"Brooz","replies":22},{"from":"HolyAngel_X","to":"Brooz","replies":22},{"from":"SMARTWATCH","to":"J1 Pelaez","replies":22},{"from":"SMARTWATCH","to":"RosaAmargada","replies":22},{"from":"SmilaZ","to":"MarkKordusic","replies":22},{"from":"Y","to":"Brooz","replies":22},{"from":"Y","to":"bgans","replies":22},{"from":"steffenkd","to":"metamitya","replies":22},{"from":"ArsObKSC","to":"palmbird","replies":21},{"from":"HOU","to":"BsvGodfather","replies":20},{"from":"J1 Pelaez","to":"Brooz","replies":20},{"from":"J1 Pelaez","to":"SMARTWATCH","replies":20},{"from":"MBabble","to":"chryptof","replies":20},{"from":"SMARTWATCH","to":"BsvGodfather","replies":20},{"from":"bridget","to":"palmbird","replies":20},{"from":"treefiddy","to":"4DToken","replies":20},{"from":"4DToken","to":"pxl272","replies":19},{"from":"ChefMyKLove","to":"metamitya","replies":19},{"from":"J1 Pelaez","to":"BsvGodfather","replies":19},{"from":"J1 Pelaez","to":"RosaAmargada","replies":19},{"from":"Slashvi","to":"palmbird","replies":19},{"from":"SmilaZ","to":"4DToken","replies":19},{"from":"SmilaZ","to":"HolyAngel_X","replies":19},{"from":"palmbird","to":"SMARTWATCH","replies":19},{"from":"pxl272","to":"BsvGodfather","replies":19},{"from":"pxl272","to":"KURO","replies":19},{"from":"ruthheasman","to":"SMARTWATCH","replies":19},{"from":"ArsObKSC","to":"MarkKordusic","replies":18},{"from":"BsvGodfather","to":"palmbird","replies":18},{"from":"MarkKordusic","to":"4DToken","replies":18},{"from":"RosaAmargada","to":"3dordi","replies":18},{"from":"RosaAmargada","to":"KURO","replies":18},{"from":"SMARTWATCH","to":"arghzero","replies":18},{"from":"Y","to":"bridget","replies":18},{"from":"palmbird","to":"arghzero","replies":18},{"from":"ChefMyKLove","to":"Brooz","replies":17},{"from":"HolyAngel_X","to":"MarkKordusic","replies":17},{"from":"RosaAmargada","to":"HolyAngel_X","replies":17},{"from":"SMARTWATCH","to":"palmbird","replies":17},{"from":"Slashvi","to":"SMARTWATCH","replies":17},{"from":"Slashvi","to":"pxl272","replies":17},{"from":"SmilaZ","to":"palmbird","replies":17},{"from":"Y","to":"pxl272","replies":17},{"from":"bridget","to":"79b","replies":17},{"from":"bridget","to":"brockz","replies":17},{"from":"brockz","to":"metamitya","replies":17},{"from":"chryptof","to":"BsvGodfather","replies":17},{"from":"chryptof","to":"metamitya","replies":17},{"from":"staub","to":"Brooz","replies":17},{"from":"web3bsv","to":"4DToken","replies":17},{"from":"79b","to":"arghzero","replies":16},{"from":"ArsObKSC","to":"SmilaZ","replies":16},{"from":"BsvGodfather","to":"HOU","replies":16},{"from":"MBabble","to":"Brooz","replies":16},{"from":"SMARTWATCH","to":"KURO","replies":16},{"from":"SmilaZ","to":"metamitya","replies":16},{"from":"immortancrow","to":"pxl272","replies":16},{"from":"palmbird","to":"pxl272","replies":16},{"from":"pete","to":"MrWow","replies":16},{"from":"4DToken","to":"metamitya","replies":15},{"from":"79b","to":"bridget","replies":15},{"from":"ArsObKSC","to":"bridget","replies":15},{"from":"ArsObKSC","to":"steffenkd","replies":15},{"from":"BsvGodfather","to":"pxl272","replies":15},{"from":"arghzero","to":"Brooz","replies":15},{"from":"arghzero","to":"bridget","replies":15},{"from":"metamitya","to":"4DToken","replies":15},{"from":"4DToken","to":"palmbird","replies":14},{"from":"ArsObKSC","to":"Brooz","replies":14},{"from":"ArsObKSC","to":"SMARTWATCH","replies":14},{"from":"Brooz","to":"SMARTWATCH","replies":14},{"from":"Brooz","to":"palmbird","replies":14},{"from":"BsvGodfather","to":"RosaAmargada","replies":14},{"from":"Ralf","to":"4DToken","replies":14},{"from":"Ralf","to":"RosaAmargada","replies":14},{"from":"Ralf","to":"metamitya","replies":14},{"from":"Y","to":"BsvGodfather","replies":14},{"from":"bridget","to":"ArsObKSC","replies":14},{"from":"bridget","to":"SMARTWATCH","replies":14},{"from":"bridget","to":"pxl272","replies":14},{"from":"metamitya","to":"Casey","replies":14},{"from":"metamitya","to":"pete","replies":14},{"from":"palmbird","to":"RosaAmargada","replies":14},{"from":"pxl272","to":"4DToken","replies":14},{"from":"pxl272","to":"J1 Pelaez","replies":14},{"from":"pxl272","to":"steffenkd","replies":14},{"from":"staub","to":"treefiddy","replies":14},{"from":"steffenkd","to":"Y","replies":14},{"from":"steffenkd","to":"bridget","replies":14},{"from":"steffenkd","to":"palmbird","replies":14},{"from":"4DToken","to":"treefiddy","replies":13},{"from":"79b","to":"pxl272","replies":13},{"from":"ArsObKSC","to":"BsvGodfather","replies":13},{"from":"ArsObKSC","to":"bgans","replies":13},{"from":"Brooz","to":"staub","replies":13},{"from":"BsvGodfather","to":"brockz","replies":13},{"from":"HolyAngel_X","to":"3dordi","replies":13},{"from":"KURO","to":"Ralf","replies":13},{"from":"KURO","to":"arghzero","replies":13},{"from":"RosaAmargada","to":"brockz","replies":13},{"from":"SickKevi","to":"pxl272","replies":13},{"from":"Y","to":"HOU","replies":13},{"from":"brockz","to":"palmbird","replies":13},{"from":"immortancrow","to":"metamitya","replies":13},{"from":"palmbird","to":"Y","replies":13},{"from":"pxl272","to":"bgans","replies":13},{"from":"treefiddy","to":"3dordi","replies":13},{"from":"3dordi","to":"staub","replies":12},{"from":"4DToken","to":"HolyAngel_X","replies":12},{"from":"79b","to":"BsvGodfather","replies":12},{"from":"ArsObKSC","to":"HolyAngel_X","replies":12},{"from":"ArsObKSC","to":"pxl272","replies":12},{"from":"Brooz","to":"BsvGodfather","replies":12},{"from":"Brooz","to":"ChefMyKLove","replies":12},{"from":"BsvGodfather","to":"Brooz","replies":12},{"from":"BsvGodfather","to":"J1 Pelaez","replies":12},{"from":"Bsvcrypto","to":"web3bsv","replies":12},{"from":"KURO","to":"BsvGodfather","replies":12},{"from":"SMARTWATCH","to":"Brooz","replies":12},{"from":"SMARTWATCH","to":"Y","replies":12},{"from":"SickKevi","to":"metamitya","replies":12},{"from":"Y","to":"steffenkd","replies":12},{"from":"ZoideNFT","to":"KURO","replies":12},{"from":"metamitya","to":"brockz","replies":12},{"from":"palmbird","to":"bridget","replies":12},{"from":"pxl272","to":"ZoideNFT","replies":12},{"from":"pxl272","to":"staub","replies":12},{"from":"staub","to":"3dordi","replies":12},{"from":"treefiddy","to":"79b","replies":12},{"from":"treefiddy","to":"arghzero","replies":12},{"from":"79b","to":"Slashvi","replies":11},{"from":"BsvGodfather","to":"Casey","replies":11},{"from":"HolyAngel_X","to":"RosaAmargada","replies":11},{"from":"KURO","to":"4DToken","replies":11},{"from":"RosaAmargada","to":"MBabble","replies":11},{"from":"SMARTWATCH","to":"MBabble","replies":11},{"from":"SMARTWATCH","to":"ruthheasman","replies":11},{"from":"SmilaZ","to":"bgans","replies":11},{"from":"immortancrow","to":"Y","replies":11},{"from":"staub","to":"arghzero","replies":11},{"from":"terrorknowed","to":"KURO","replies":11},{"from":"web3bsv","to":"Bsvcrypto","replies":11},{"from":"4DToken","to":"79b","replies":10},{"from":"4DToken","to":"MarkKordusic","replies":10},{"from":"4DToken","to":"Ralf","replies":10},{"from":"4DToken","to":"SmilaZ","replies":10},{"from":"79b","to":"HolyAngel_X","replies":10},{"from":"BsvGodfather","to":"KURO","replies":10},{"from":"HOU","to":"Brooz","replies":10},{"from":"J1 Pelaez","to":"Casey","replies":10},{"from":"J1 Pelaez","to":"HOU","replies":10},{"from":"MarkKordusic","to":"SmilaZ","replies":10},{"from":"RosaAmargada","to":"Brooz","replies":10},{"from":"RosaAmargada","to":"ChefMyKLove","replies":10},{"from":"SMARTWATCH","to":"Kazi5isAlive","replies":10},{"from":"Slashvi","to":"arghzero","replies":10},{"from":"bridget","to":"chryptof","replies":10},{"from":"metamitya","to":"ChefMyKLove","replies":10},{"from":"metamitya","to":"MBabble","replies":10},{"from":"metamitya","to":"Truth_Machine","replies":10},{"from":"palmbird","to":"MBabble","replies":10},{"from":"palmbird","to":"immortancrow","replies":10},{"from":"pete","to":"metamitya","replies":10},{"from":"pxl272","to":"3dordi","replies":10},{"from":"staub","to":"SMARTWATCH","replies":10},{"from":"staub","to":"Y","replies":10},{"from":"treefiddy","to":"Bsvcrypto","replies":10},{"from":"3dordi","to":"treefiddy","replies":9},{"from":"4DToken","to":"NFT_ProjectBSV","replies":9},{"from":"4DToken","to":"web3bsv","replies":9},{"from":"ArsObKSC","to":"ChefMyKLove","replies":9},{"from":"Brooz","to":"RosaAmargada","replies":9},{"from":"Brooz","to":"chryptof","replies":9},{"from":"BsvGodfather","to":"79b","replies":9},{"from":"Casey","to":"metamitya","replies":9},{"from":"ChefMyKLove","to":"bgans","replies":9},{"from":"HolyAngel_X","to":"ArsObKSC","replies":9},{"from":"HolyAngel_X","to":"SmilaZ","replies":9},{"from":"J1 Pelaez","to":"HolyAngel_X","replies":9},{"from":"KURO","to":"ChefMyKLove","replies":9},{"from":"KURO","to":"ZoideNFT","replies":9},{"from":"KURO","to":"terrorknowed","replies":9},{"from":"MarkKordusic","to":"ArsObKSC","replies":9},{"from":"Ralf","to":"KURO","replies":9},{"from":"brockz","to":"ArsObKSC","replies":9}]};
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+let W, H;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Build name->index map
+const nameMap = {};
+DATA.nodes.forEach((n, i) => { nameMap[n.name] = i; });
+
+// Initialize node positions
+const maxTotal = Math.max(...DATA.nodes.map(n => n.total));
+const nodes = DATA.nodes.map((n, i) => {
+  const angle = (i / DATA.nodes.length) * Math.PI * 2;
+  const r = 200 + Math.random() * 100;
+  return {
+    ...n,
+    x: W/2 + Math.cos(angle) * r,
+    y: H/2 + Math.sin(angle) * r,
+    vx: 0, vy: 0,
+    radius: 4 + Math.sqrt(n.total / maxTotal) * 22,
+  };
+});
+
+// Process edges
+const edges = DATA.edges.map(e => ({
+  source: nameMap[e.from],
+  target: nameMap[e.to],
+  replies: e.replies,
+  strength: Math.min(e.replies / 50, 1)
+})).filter(e => e.source !== undefined && e.target !== undefined);
+
+// Particles
+const particles = [];
+const MAX_PARTICLES = 600;
+
+function spawnParticle() {
+  if (particles.length >= MAX_PARTICLES) return;
+  // Pick a random edge, weighted toward higher-reply edges
+  const e = edges[Math.floor(Math.random() * edges.length)];
+  const src = nodes[e.source];
+  const tgt = nodes[e.target];
+  // Direction: from giver toward receiver (based on ratio)
+  const srcGiver = src.ratio < 0;
+  const from = srcGiver ? src : tgt;
+  const to = srcGiver ? tgt : src;
+
+  particles.push({
+    x: from.x, y: from.y,
+    tx: to.x, ty: to.y,
+    fromIdx: srcGiver ? e.source : e.target,
+    toIdx: srcGiver ? e.target : e.source,
+    progress: 0,
+    speed: 0.003 + Math.random() * 0.004,
+    size: 1.5 + Math.random() * 2,
+    alpha: 0.5 + Math.random() * 0.4,
+  });
+}
+
+// Color from ratio
+function ratioColor(ratio, alpha) {
+  // -1 (pure giver) = warm orange/red
+  //  0 (balanced) = gold
+  // +1 (pure receiver) = teal/green
+  const t = (ratio + 1) / 2; // 0..1
+  const r = Math.round(255 - t * 200);
+  const g = Math.round(100 + t * 100);
+  const b = Math.round(20 + t * 150);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Force simulation
+function simulate() {
+  const dt = 0.3;
+
+  // Center gravity
+  nodes.forEach(n => {
+    n.vx += (W/2 - n.x) * 0.0003;
+    n.vy += (H/2 - n.y) * 0.0003;
+  });
+
+  // Node repulsion
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      let dx = nodes[j].x - nodes[i].x;
+      let dy = nodes[j].y - nodes[i].y;
+      let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      let minDist = nodes[i].radius + nodes[j].radius + 30;
+      if (dist < minDist * 3) {
+        let force = (minDist * 2) / (dist * dist) * 2;
+        nodes[i].vx -= dx * force;
+        nodes[i].vy -= dy * force;
+        nodes[j].vx += dx * force;
+        nodes[j].vy += dy * force;
+      }
+    }
+  }
+
+  // Edge attraction
+  edges.forEach(e => {
+    const src = nodes[e.source];
+    const tgt = nodes[e.target];
+    let dx = tgt.x - src.x;
+    let dy = tgt.y - src.y;
+    let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    let idealDist = 120 + (1 - e.strength) * 200;
+    let force = (dist - idealDist) * 0.0002 * e.strength;
+    src.vx += dx * force;
+    src.vy += dy * force;
+    tgt.vx -= dx * force;
+    tgt.vy -= dy * force;
+  });
+
+  // Damping & update
+  nodes.forEach(n => {
+    n.vx *= 0.92;
+    n.vy *= 0.92;
+    if (!n.dragging) {
+      n.x += n.vx * dt;
+      n.y += n.vy * dt;
+      // Keep in bounds
+      n.x = Math.max(n.radius + 10, Math.min(W - n.radius - 10, n.x));
+      n.y = Math.max(n.radius + 10, Math.min(H - n.radius - 10, n.y));
+    }
+  });
+}
+
+// Render
+function draw() {
+  ctx.fillStyle = 'rgba(10,10,15,0.25)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Edges
+  edges.forEach(e => {
+    const src = nodes[e.source];
+    const tgt = nodes[e.target];
+    const alpha = 0.04 + e.strength * 0.08;
+    ctx.strokeStyle = `rgba(120,110,90,${alpha})`;
+    ctx.lineWidth = 0.5 + e.strength * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(src.x, src.y);
+    ctx.lineTo(tgt.x, tgt.y);
+    ctx.stroke();
+  });
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    const from = nodes[p.fromIdx];
+    const to = nodes[p.toIdx];
+    p.tx = to.x; p.ty = to.y;
+    p.x = from.x + (to.x - from.x) * p.progress;
+    p.y = from.y + (to.y - from.y) * p.progress;
+    p.progress += p.speed;
+
+    if (p.progress >= 1) {
+      particles.splice(i, 1);
+      continue;
+    }
+
+    // Fade in/out
+    const fadeAlpha = p.progress < 0.1 ? p.progress * 10 :
+                      p.progress > 0.9 ? (1 - p.progress) * 10 : 1;
+    const color = ratioColor(from.ratio, p.alpha * fadeAlpha);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Nodes
+  const time = Date.now() * 0.001;
+  nodes.forEach((n, i) => {
+    const pulse = 0.85 + 0.15 * Math.sin(time * 1.2 + i * 0.7);
+
+    // Glow
+    const glowR = n.radius * 2.8 * pulse;
+    const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, glowR);
+    grad.addColorStop(0, ratioColor(n.ratio, 0.2 * pulse));
+    grad.addColorStop(0.5, ratioColor(n.ratio, 0.06 * pulse));
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, glowR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Core
+    ctx.fillStyle = ratioColor(n.ratio, 0.75 * pulse);
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ring
+    ctx.strokeStyle = ratioColor(n.ratio, 0.35 * pulse);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.radius + 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Label for large nodes
+    if (n.radius > 8) {
+      ctx.fillStyle = ratioColor(n.ratio, 0.5);
+      ctx.font = `${Math.max(9, n.radius * 0.6)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText(n.name, n.x, n.y + n.radius + 12);
+    }
+  });
+
+  // Spawn particles
+  for (let i = 0; i < 4; i++) spawnParticle();
+}
+
+// Hover
+let hoveredNode = null;
+canvas.addEventListener('mousemove', (e) => {
+  const mx = e.clientX, my = e.clientY;
+  hoveredNode = null;
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    const dx = mx - n.x, dy = my - n.y;
+    if (dx*dx + dy*dy < (n.radius + 8) * (n.radius + 8)) {
+      hoveredNode = n;
+      break;
+    }
+  }
+  if (hoveredNode) {
+    const n = hoveredNode;
+    const givenBSV = (n.given / 1e8).toFixed(2);
+    const recvBSV = (n.received / 1e8).toFixed(2);
+    const net = ((n.received - n.given) / 1e8).toFixed(2);
+    const roleClass = n.ratio < -0.3 ? 'giver' : n.ratio > 0.3 ? 'receiver' : 'balanced';
+    const role = n.ratio < -0.3 ? 'Net Giver (Patron)' : n.ratio > 0.3 ? 'Net Receiver (Creator)' : 'Balanced';
+    tooltip.innerHTML = `<div class="name ${roleClass}">${n.name}</div>` +
+      `<span class="${roleClass}">${role}</span><br>` +
+      `<span class="stat">Given: ${givenBSV} BSV · Received: ${recvBSV} BSV</span><br>` +
+      `<span class="stat">Net: ${net} BSV · Posts: ${n.posts.toLocaleString()}</span>`;
+    tooltip.style.display = 'block';
+    tooltip.style.left = (mx + 16) + 'px';
+    tooltip.style.top = (my - 16) + 'px';
+    // Keep tooltip in view
+    const rect = tooltip.getBoundingClientRect();
+    if (rect.right > W) tooltip.style.left = (mx - rect.width - 16) + 'px';
+    if (rect.bottom > H) tooltip.style.top = (my - rect.height - 16) + 'px';
+    canvas.style.cursor = 'pointer';
+  } else {
+    tooltip.style.display = 'none';
+    canvas.style.cursor = 'default';
+  }
+});
+
+// Drag
+let dragNode = null;
+canvas.addEventListener('mousedown', (e) => {
+  if (hoveredNode) {
+    dragNode = hoveredNode;
+    dragNode.dragging = true;
+  }
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (dragNode) {
+    dragNode.x = e.clientX;
+    dragNode.y = e.clientY;
+  }
+});
+canvas.addEventListener('mouseup', () => {
+  if (dragNode) {
+    dragNode.dragging = false;
+    dragNode = null;
+  }
+});
+
+// Animation
+function loop() {
+  simulate();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Initial clear
+ctx.fillStyle = '#0a0a0f';
+ctx.fillRect(0, 0, W, H);
+loop();
+</script>
+</body>
+</html>
