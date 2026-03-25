@@ -1330,11 +1330,13 @@ const lineFrag = `
     }
 
     // Trunk glow: light up trunk segments connecting branch to root
-    if (uTrunkGlowMax >= 0.0 && vDepth < 0.1 && vTrunkT >= 0.0 && vTrunkT <= uTrunkGlowMax) {
+    // Fade out at the branch attachment point (subtract one segment width ~0.042)
+    if (uTrunkGlowMax >= 0.0 && vDepth < 0.1 && vTrunkT >= 0.0 && vTrunkT < uTrunkGlowMax - 0.04) {
+      float edgeFade = smoothstep(uTrunkGlowMax - 0.04, uTrunkGlowMax - 0.08, vTrunkT);
       float trunkWave = sin(vTrunkT * 20.0 - uTime * 4.0) * 0.5 + 0.5;
       float trunkPulse = sin(uTime * 2.0) * 0.2 + 0.8;
-      color = mix(color, vec3(1.0, 0.85, 0.5), 0.35 * trunkWave);
-      alpha = alpha * (1.5 + trunkWave * 1.0) + 0.15 * trunkPulse;
+      color = mix(color, vec3(1.0, 0.85, 0.5), 0.35 * trunkWave * edgeFade);
+      alpha = alpha * (1.0 + edgeFade * (0.5 + trunkWave * 1.0)) + 0.15 * trunkPulse * edgeFade;
     }
 
     gl_FragColor = vec4(color, min(alpha, 1.0));
