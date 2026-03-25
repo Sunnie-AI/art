@@ -235,6 +235,31 @@ const TC_EDGES = [
 
 const TC_META = { posts: 326699, users: 876, days: 790, height: 941698 };
 
+// Top givers — the root system. Sats given (all-time).
+const TC_GIVERS = [
+  {n:"metamitya",g:6340080657,p:9845,s:"2024-02-03"},
+  {n:"4DToken",g:1727828490,p:1732,s:"2025-05-28"},
+  {n:"terrorknowed",g:1727700247,p:84,s:"2025-07-15"},
+  {n:"MarkKordusic",g:738434320,p:1217,s:"2025-08-01"},
+  {n:"brockz",g:614029205,p:344,s:"2025-08-27"},
+  {n:"P2pumper",g:549726388,p:35,s:"2025-11-16"},
+  {n:"treefiddy",g:549245196,p:366,s:"2025-09-14"},
+  {n:"Bsvcrypto",g:444395300,p:729,s:"2025-06-03"},
+  {n:"pxl272",g:340323787,p:2254,s:"2024-10-15"},
+  {n:"staub",g:252399399,p:794,s:"2024-11-17"},
+  {n:"J1 Pelaez",g:233867731,p:833,s:"2025-05-19"},
+  {n:"3dordi",g:213227249,p:297,s:"2025-09-26"},
+  {n:"Truth_Machine",g:172533000,p:97,s:"2025-06-09"},
+  {n:"79b",g:153812233,p:1078,s:"2024-11-19"},
+  {n:"MBabble",g:135541000,p:384,s:"2025-05-20"},
+  {n:"pete",g:125544747,p:188,s:"2024-10-29"},
+  {n:"Brooz",g:112174617,p:1221,s:"2025-05-19"},
+  {n:"EastTXguy",g:62594015,p:9,s:"2024-11-20"},
+  {n:"ArsObKSC",g:61776300,p:2062,s:"2024-10-18"},
+];
+const MAX_GIVEN = Math.max(...TC_GIVERS.map(g => g.g));
+const ROOT_OFFSET = TC_USERS.length; // user index offset for root givers
+
 // Tips received (sats) — economic weight for branch thickness
 const TC_TIPS = {
   "treechad":3613965009,"metamitya":1521014108,"treefiddy":1355256054,
@@ -460,6 +485,69 @@ function buildTree(hp) {
     branch(origin, dir, len, thick, 1, isSun, u, 0, undefined, idx);
   });
 
+  // ── ROOT SYSTEM — top givers grow downward from trunk base ──
+  TC_GIVERS.forEach((g, gIdx) => {
+    const givenNorm = Math.log1p(g.g) / Math.log1p(MAX_GIVEN);
+    const angle = hp.angle0 + gIdx * GOLDEN * 1.3 + Math.PI; // offset from branches
+    const rootLen = 2 + 6 * Math.sqrt(givenNorm);
+    const rootThick = 0.05 + 0.25 * Math.sqrt(givenNorm);
+    const isSun = g.n === 'Sunnie';
+
+    // Roots start at trunk base, grow downward
+    const rootOrigin = new THREE.Vector3(0, 0, 0);
+    const rootDir = new THREE.Vector3(
+      Math.cos(angle) * 0.8, -0.6 - givenNorm * 0.3, Math.sin(angle) * 0.8
+    ).normalize();
+
+    // Use the same branch function but with root-tagged segments
+    // Growth timing: roots appear early (they're the foundation)
+    const rootGrowBase = 0.05 + gIdx * 0.01;
+    const rootUserIdx = ROOT_OFFSET + gIdx;
+
+    // Build root segments manually (simpler than full branch recursion)
+    const nSeg = Math.max(4, Math.floor(rootLen * 1.5));
+    const segL = rootLen / nSeg;
+    let pos = rootOrigin.clone();
+    let d = rootDir.clone();
+    const seed = hp.seeds[gIdx % hp.seeds.length] / 255;
+
+    for (let i = 0; i < nSeg; i++) {
+      const next = pos.clone().add(d.clone().multiplyScalar(segL));
+      // Organic spread
+      next.x += Math.sin(seed * 80 + i * 2.1) * 0.08;
+      next.z += Math.cos(seed * 60 + i * 1.7) * 0.08;
+      next.y -= 0.02 * i; // gradually steeper
+
+      const segGT = rootGrowBase + (i / nSeg) * 0.06;
+      segs.push({
+        s: pos.clone(), e: next.clone(),
+        bo: rootOrigin, d: 1, o: gIdx, th: rootThick * (1 - i/nSeg * 0.5),
+        si: i/nSeg, sun: isSun, gt: segGT, ui: rootUserIdx, root: true,
+      });
+      gpts.push({
+        p: next.clone(), d: 1, o: gIdx, sz: rootThick * 0.8,
+        sun: isSun, gt: segGT, ui: rootUserIdx, bo: rootOrigin, root: true,
+      });
+      pos = next;
+      d = next.clone().sub(segs[segs.length-1].s).normalize();
+    }
+
+    // Root tip leaves (smaller, below ground)
+    const rootTipGT = rootGrowBase + 0.08;
+    for (let i = 0; i < Math.max(3, Math.floor(givenNorm * 8)); i++) {
+      lvs.push({
+        p: pos.clone().add(new THREE.Vector3(
+          (Math.random()-0.5)*0.6, -Math.random()*0.4, (Math.random()-0.5)*0.6
+        )),
+        o: gIdx, ph: Math.random(), sun: isSun,
+        gt: rootTipGT, ui: rootUserIdx, root: true,
+      });
+    }
+
+    // Store tip position for roots too
+    userTips[g.n + '_root'] = pos.clone();
+  });
+
   // Build connection arcs as line segments for flowing dash effect
   const maxReplies = Math.max(...TC_EDGES.map(e => e[2]));
   for (const [from, to, replies, firstDate] of TC_EDGES) {
@@ -529,22 +617,27 @@ const lineVert = `
   attribute float aIsEnd;
   attribute float aIsSunnie;
   attribute float aUserIdx;
+  attribute float aIsRoot;
   attribute vec3 aStartPos;
   uniform float uTime;
   uniform float uGrowth;
   uniform float uSelectedUser;
+  uniform float uSelectedRoot;
   varying float vDepth;
   varying float vGrow;
   varying float vFog;
   varying float vSunnie;
   varying float vSelected;
+  varying float vRoot;
 
   void main() {
     float segGrow = clamp((uGrowth - aGrowTime) / 0.04, 0.0, 1.0);
     vGrow = segGrow;
     vDepth = aDepth;
     vSunnie = aIsSunnie;
-    vSelected = (uSelectedUser >= 0.0 && abs(aUserIdx - uSelectedUser) < 0.5) ? 1.0 : 0.0;
+    vRoot = aIsRoot;
+    vSelected = ((uSelectedUser >= 0.0 && abs(aUserIdx - uSelectedUser) < 0.5) ||
+                 (uSelectedRoot >= 0.0 && abs(aUserIdx - uSelectedRoot) < 0.5)) ? 1.0 : 0.0;
 
     // Both start and end vertices grow outward from branch origin
     vec3 pos = mix(aStartPos, position, segGrow);
@@ -574,6 +667,7 @@ const lineFrag = `
   varying float vFog;
   varying float vSunnie;
   varying float vSelected;
+  varying float vRoot;
 
   void main() {
     if (vGrow < 0.01) discard;
@@ -582,6 +676,11 @@ const lineFrag = `
     vec3 color;
     if (vSunnie > 0.5) {
       color = mix(uSunnie, uSunnieTip, smoothstep(0.0, 0.8, t));
+    } else if (vRoot > 0.5) {
+      // Roots: deeper warm gold → copper
+      vec3 rootBase = vec3(0.55, 0.35, 0.12);
+      vec3 rootTip = vec3(0.85, 0.55, 0.15);
+      color = mix(rootBase, rootTip, smoothstep(0.0, 0.7, t));
     } else {
       color = mix(uTrunk, uMid, smoothstep(0.0, 0.3, t));
       color = mix(color, uTip, smoothstep(0.35, 0.85, t));
@@ -622,13 +721,15 @@ const glowVert = `
   uniform float uTime;
   uniform float uGrowth;
   uniform float uSelectedUser;
+  uniform float uSelectedRoot;
   varying float vAlpha;
   varying float vSunnie;
   varying float vSelected;
 
   void main() {
     float grow = clamp((uGrowth - aGrowTime) / 0.04, 0.0, 1.0);
-    vSelected = (uSelectedUser >= 0.0 && abs(aUserIdx - uSelectedUser) < 0.5) ? 1.0 : 0.0;
+    vSelected = ((uSelectedUser >= 0.0 && abs(aUserIdx - uSelectedUser) < 0.5) ||
+                 (uSelectedRoot >= 0.0 && abs(aUserIdx - uSelectedRoot) < 0.5)) ? 1.0 : 0.0;
     vAlpha = grow;
     vSunnie = aIsSunnie;
 
@@ -684,6 +785,7 @@ const leafVert = `
   uniform float uTime;
   uniform float uGrowth;
   uniform float uSelectedUser;
+  uniform float uSelectedRoot;
   varying float vAlpha;
   varying float vPhase;
   varying float vSunnie;
@@ -691,7 +793,8 @@ const leafVert = `
 
   void main() {
     float grow = smoothstep(aGrowTime, aGrowTime + 0.06, uGrowth);
-    vSelected = (uSelectedUser >= 0.0 && abs(aUserIdx - uSelectedUser) < 0.5) ? 1.0 : 0.0;
+    vSelected = ((uSelectedUser >= 0.0 && abs(aUserIdx - uSelectedUser) < 0.5) ||
+                 (uSelectedRoot >= 0.0 && abs(aUserIdx - uSelectedRoot) < 0.5)) ? 1.0 : 0.0;
     vAlpha = grow;
     vPhase = aPhase;
     vSunnie = aIsSunnie;
@@ -809,18 +912,18 @@ async function init() {
   const { segs, lvs, gpts, conns } = buildTree(hp);
 
   // ── Branch lines ──
-  const lPos=[], lStart=[], lDepth=[], lGrow=[], lEnd=[], lSun=[], lUi=[];
+  const lPos=[], lStart=[], lDepth=[], lGrow=[], lEnd=[], lSun=[], lUi=[], lRoot=[];
   for (const s of segs) {
     const gt = s.gt ?? (s.d + s.si * 0.8) / 10;
     const origin = s.bo ?? s.s;
     // start vertex
     lPos.push(s.s.x,s.s.y,s.s.z);
     lStart.push(origin.x,origin.y,origin.z);
-    lDepth.push(s.d); lGrow.push(gt); lEnd.push(0); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1);
+    lDepth.push(s.d); lGrow.push(gt); lEnd.push(0); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1); lRoot.push(s.root?1:0);
     // end vertex
     lPos.push(s.e.x,s.e.y,s.e.z);
     lStart.push(origin.x,origin.y,origin.z);
-    lDepth.push(s.d); lGrow.push(gt); lEnd.push(1); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1);
+    lDepth.push(s.d); lGrow.push(gt); lEnd.push(1); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1); lRoot.push(s.root?1:0);
   }
 
   const lineGeo = new THREE.BufferGeometry();
@@ -831,11 +934,12 @@ async function init() {
   lineGeo.setAttribute('aIsEnd', new THREE.Float32BufferAttribute(lEnd, 1));
   lineGeo.setAttribute('aIsSunnie', new THREE.Float32BufferAttribute(lSun, 1));
   lineGeo.setAttribute('aUserIdx', new THREE.Float32BufferAttribute(lUi, 1));
+  lineGeo.setAttribute('aIsRoot', new THREE.Float32BufferAttribute(lRoot, 1));
 
   const lineMat = new THREE.ShaderMaterial({
     vertexShader: lineVert, fragmentShader: lineFrag,
     uniforms: {
-      uTime:{value:0}, uGrowth:{value:0}, uSelectedUser:{value:-1},
+      uTime:{value:0}, uGrowth:{value:0}, uSelectedUser:{value:-1}, uSelectedRoot:{value:-1},
       uTrunk:{value:PAL.trunk}, uMid:{value:PAL.mid}, uTip:{value:PAL.tip},
       uSunnie:{value:PAL.sun}, uSunnieTip:{value:PAL.sunTip},
     },
@@ -865,7 +969,7 @@ async function init() {
   const glowMat = new THREE.ShaderMaterial({
     vertexShader: glowVert, fragmentShader: glowFrag,
     uniforms: {
-      uTime:{value:0}, uGrowth:{value:0}, uSelectedUser:{value:-1},
+      uTime:{value:0}, uGrowth:{value:0}, uSelectedUser:{value:-1}, uSelectedRoot:{value:-1},
       uGlow:{value:PAL.glow}, uGlowSunnie:{value:PAL.glowS},
     },
     transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
@@ -892,7 +996,7 @@ async function init() {
   const leafMat = new THREE.ShaderMaterial({
     vertexShader: leafVert, fragmentShader: leafFrag,
     uniforms: {
-      uTime:{value:0}, uGrowth:{value:0}, uSelectedUser:{value:-1},
+      uTime:{value:0}, uGrowth:{value:0}, uSelectedUser:{value:-1}, uSelectedRoot:{value:-1},
       uLeaf:{value:new THREE.Color('#ffaa44')},
       uLeafAlt:{value:new THREE.Color('#ffcc66')},
       uLeafSunnie:{value:new THREE.Color('#22ccaa')},
@@ -1013,28 +1117,41 @@ async function init() {
     return sats + ' sats';
   }
 
-  function selectUser(idx) {
+  function selectUser(idx, rootIdx) {
     selectedUserIdx = idx;
+    // For dual selection (branch+root), use uSelectedUser for branch and uSelectedRoot for root
     for (const m of allMats) {
       if (m.uniforms.uSelectedUser) m.uniforms.uSelectedUser.value = idx;
+      if (m.uniforms.uSelectedRoot) m.uniforms.uSelectedRoot.value = rootIdx ?? -1;
     }
     searchResults.style.display = 'none';
 
+    // Find user info from either TC_USERS or TC_GIVERS
+    let name, posts, joinDate, tips, given;
     if (idx >= 0 && idx < TC_USERS.length) {
       const u = TC_USERS[idx];
-      const tips = TC_TIPS[u.n] || 0;
-      const isSun = u.n === 'Sunnie';
+      name = u.n; posts = u.p; joinDate = u.s;
+    } else if (idx >= ROOT_OFFSET) {
+      const g = TC_GIVERS[idx - ROOT_OFFSET];
+      if (g) { name = g.n; posts = g.p; joinDate = g.s; }
+    }
+
+    if (name) {
+      tips = TC_TIPS[name] || 0;
+      const giver = TC_GIVERS.find(g => g.n === name);
+      given = giver ? giver.g : 0;
+      const isSun = name === 'Sunnie';
       selectedInfoEl.innerHTML =
-        `<div class="${isSun ? 'name sunnie-name' : 'name'}">${u.n}</div>` +
-        `${u.p} posts · joined ${u.s}<br>` +
+        `<div class="${isSun ? 'name sunnie-name' : 'name'}">${name}</div>` +
+        `${posts} posts · joined ${joinDate}<br>` +
         (tips > 0 ? `${formatSats(tips)} received<br>` : '') +
+        (given > 0 ? `${formatSats(given)} given 🌱<br>` : '') +
         `<br><span style="opacity:0.4;cursor:pointer" onclick="window._clearSelection()">✕ clear</span>`;
       selectedInfoEl.style.display = 'block';
 
-      // Camera focus: orbit to face user's branch
-      const tip = userTips[u.n];
+      const tip = userTips[name] || userTips[name + '_root'];
       if (tip) {
-        controls.target.set(tip.x * 0.3, tip.y * 0.8, tip.z * 0.3);
+        controls.target.set(tip.x * 0.3, Math.max(tip.y * 0.8, 2), tip.z * 0.3);
       }
     } else {
       selectedInfoEl.style.display = 'none';
@@ -1044,20 +1161,37 @@ async function init() {
 
   window._clearSelection = () => selectUser(-1);
 
+  // Build combined searchable list: branches + root-only givers
+  const searchableUsers = [];
+  TC_USERS.forEach((u, i) => searchableUsers.push({ name: u.n, idx: i, posts: u.p, type: 'branch' }));
+  TC_GIVERS.forEach((g, i) => {
+    // Only add if not already a branch user
+    if (!searchableUsers.find(s => s.name === g.n)) {
+      searchableUsers.push({ name: g.n, idx: ROOT_OFFSET + i, posts: g.p, given: g.g, type: 'root' });
+    } else {
+      // User has both branch and root — add root index as alt
+      const existing = searchableUsers.find(s => s.name === g.n);
+      existing.given = g.g;
+      existing.rootIdx = ROOT_OFFSET + i;
+    }
+  });
+
   searchInput.addEventListener('input', () => {
     const q = searchInput.value.toLowerCase().trim();
     if (!q) { searchResults.style.display = 'none'; return; }
-    const matches = TC_USERS
-      .map((u, i) => ({ u, i }))
-      .filter(({ u }) => u.n.toLowerCase().includes(q))
+    const matches = searchableUsers
+      .filter(s => s.name.toLowerCase().includes(q))
       .slice(0, 12);
     if (matches.length === 0) { searchResults.style.display = 'none'; return; }
-    searchResults.innerHTML = matches.map(({ u, i }) => {
-      const tips = TC_TIPS[u.n] || 0;
-      const cls = u.n === 'Sunnie' ? 'search-item sunnie-item' : 'search-item';
-      return `<div class="${cls}" data-idx="${i}">` +
-        `${u.n} <span class="sats">${u.p}p` +
-        (tips > 0 ? ` · ${formatSats(tips)}` : '') +
+    searchResults.innerHTML = matches.map(s => {
+      const tips = TC_TIPS[s.name] || 0;
+      const given = s.given || TC_GIVERS.find(g => g.n === s.name)?.g || 0;
+      const cls = s.name === 'Sunnie' ? 'search-item sunnie-item' : 'search-item';
+      const typeLabel = s.type === 'root' ? ' 🌱' : '';
+      return `<div class="${cls}" data-idx="${s.idx}" data-root-idx="${s.rootIdx ?? -1}">` +
+        `${s.name}${typeLabel} <span class="sats">${s.posts}p` +
+        (tips > 0 ? ` · recv ${formatSats(tips)}` : '') +
+        (given > 0 ? ` · gave ${formatSats(given)}` : '') +
         `</span></div>`;
     }).join('');
     searchResults.style.display = 'block';
@@ -1067,8 +1201,10 @@ async function init() {
     const item = e.target.closest('.search-item');
     if (!item) return;
     const idx = parseInt(item.dataset.idx);
-    searchInput.value = TC_USERS[idx].n;
-    selectUser(idx);
+    const rootIdx = parseInt(item.dataset.rootIdx);
+    const entry = searchableUsers.find(s => s.idx === idx);
+    searchInput.value = entry?.name || '';
+    selectUser(idx, rootIdx >= 0 ? rootIdx : undefined);
   });
 
   searchInput.addEventListener('keydown', (e) => {
