@@ -453,6 +453,35 @@ function buildTree(hp) {
         gt: branchEndGT + 0.02, ui: userIdx ?? -1,
       });
     }
+
+    // Bloom orb at branch tip — sized by tips received
+    if (userData) {
+      const tipSats = TC_TIPS[userData.n] || 0;
+      if (tipSats > 0) {
+        const tipLinear = tipSats / MAX_TIPS;
+        const bloomSize = thick * 1.5 + Math.sqrt(tipLinear) * 1.2;
+        // Central bloom point
+        gpts.push({
+          p: pos.clone(), d: depth, o: ord,
+          sz: bloomSize, sun: isSun,
+          gt: branchEndGT + 0.01, ui: userIdx ?? -1,
+          bo: pos.clone(),
+        });
+        // Extra leaf particles for high-tip users
+        const bonusLeaves = Math.floor(Math.sqrt(tipLinear) * 10);
+        for (let i = 0; i < bonusLeaves; i++) {
+          lvs.push({
+            p: pos.clone().add(new THREE.Vector3(
+              (Math.random()-0.5)*spread*0.6,
+              Math.random()*spread*0.3,
+              (Math.random()-0.5)*spread*0.6
+            )),
+            o: ord, ph: Math.random(), sun: isSun,
+            gt: branchEndGT + 0.03, ui: userIdx ?? -1,
+          });
+        }
+      }
+    }
   }
 
   // Build user branches
