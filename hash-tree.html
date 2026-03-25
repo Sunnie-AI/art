@@ -488,63 +488,85 @@ function buildTree(hp) {
   // ── ROOT SYSTEM — top givers grow downward from trunk base ──
   TC_GIVERS.forEach((g, gIdx) => {
     const givenNorm = Math.log1p(g.g) / Math.log1p(MAX_GIVEN);
-    const angle = hp.angle0 + gIdx * GOLDEN * 1.3 + Math.PI; // offset from branches
-    const rootLen = 2 + 6 * Math.sqrt(givenNorm);
-    const rootThick = 0.05 + 0.25 * Math.sqrt(givenNorm);
+    const angle = hp.angle0 + gIdx * GOLDEN + Math.PI * 0.7; // golden angle spacing
     const isSun = g.n === 'Sunnie';
+    const seed = hp.seeds[gIdx % hp.seeds.length] / 255;
+    const seed2 = hp.seeds[(gIdx * 7 + 3) % hp.seeds.length] / 255;
 
-    // Roots start at trunk base, grow downward
+    // Bigger givers = longer, thicker roots that reach further
+    const rootLen = 3 + 12 * Math.pow(givenNorm, 0.7);
+    const rootThick = 0.04 + 0.3 * Math.sqrt(givenNorm);
+
+    // Varied initial angles — some spread wide, some dive deep
+    // Each root has a unique character from its seed
+    const spreadAmount = 0.5 + seed * 0.5; // 0.5–1.0 horizontal spread
+    const diveAmount = 0.3 + seed2 * 0.4;  // 0.3–0.7 downward pull
     const rootOrigin = new THREE.Vector3(0, 0, 0);
     const rootDir = new THREE.Vector3(
-      Math.cos(angle) * 0.8, -0.6 - givenNorm * 0.3, Math.sin(angle) * 0.8
+      Math.cos(angle) * spreadAmount,
+      -diveAmount,
+      Math.sin(angle) * spreadAmount
     ).normalize();
 
-    // Use the same branch function but with root-tagged segments
-    // Growth timing: roots appear early (they're the foundation)
-    const rootGrowBase = 0.05 + gIdx * 0.01;
+    const rootGrowBase = 0.05 + gIdx * 0.008;
     const rootUserIdx = ROOT_OFFSET + gIdx;
 
-    // Build root segments manually (simpler than full branch recursion)
-    const nSeg = Math.max(4, Math.floor(rootLen * 1.5));
+    // More segments for longer roots — smoother curves
+    const nSeg = Math.max(6, Math.floor(rootLen * 1.2));
     const segL = rootLen / nSeg;
     let pos = rootOrigin.clone();
     let d = rootDir.clone();
-    const seed = hp.seeds[gIdx % hp.seeds.length] / 255;
 
     for (let i = 0; i < nSeg; i++) {
+      const t = i / nSeg;
       const next = pos.clone().add(d.clone().multiplyScalar(segL));
-      // Organic spread
-      next.x += Math.sin(seed * 80 + i * 2.1) * 0.08;
-      next.z += Math.cos(seed * 60 + i * 1.7) * 0.08;
-      next.y -= 0.02 * i; // gradually steeper
 
-      const segGT = rootGrowBase + (i / nSeg) * 0.06;
+      // Organic wandering — roots aren't straight, they seek
+      const wanderScale = 0.12 + givenNorm * 0.08;
+      next.x += Math.sin(seed * 80 + i * 1.9 + gIdx * 3.7) * wanderScale;
+      next.z += Math.cos(seed * 60 + i * 2.3 + gIdx * 2.1) * wanderScale;
+
+      // Gradually curve more downward as root extends
+      next.y -= 0.04 * t * t * rootLen;
+
+      // Taper thickness toward tip
+      const taper = 1 - t * 0.6;
+
+      const segGT = rootGrowBase + t * 0.08;
       segs.push({
         s: pos.clone(), e: next.clone(),
-        bo: rootOrigin, d: 1, o: gIdx, th: rootThick * (1 - i/nSeg * 0.5),
-        si: i/nSeg, sun: isSun, gt: segGT, ui: rootUserIdx, root: true,
+        bo: rootOrigin, d: 1, o: gIdx, th: rootThick * taper,
+        si: t, sun: isSun, gt: segGT, ui: rootUserIdx, root: true,
       });
       gpts.push({
-        p: next.clone(), d: 1, o: gIdx, sz: rootThick * 0.8,
+        p: next.clone(), d: 1, o: gIdx, sz: rootThick * taper * 0.8,
         sun: isSun, gt: segGT, ui: rootUserIdx, bo: rootOrigin, root: true,
       });
       pos = next;
-      d = next.clone().sub(segs[segs.length-1].s).normalize();
+
+      // Update direction with slight pull toward original heading + downward
+      const newD = next.clone().sub(segs[segs.length-1].s).normalize();
+      // Blend current direction with gravity pull
+      d.lerp(newD, 0.6);
+      d.y -= 0.02; // gentle gravity
+      d.normalize();
     }
 
-    // Root tip leaves (smaller, below ground)
-    const rootTipGT = rootGrowBase + 0.08;
-    for (let i = 0; i < Math.max(3, Math.floor(givenNorm * 8)); i++) {
+    // Root tip particles — more for bigger givers
+    const rootTipGT = rootGrowBase + 0.1;
+    const tipCount = Math.max(4, Math.floor(givenNorm * 12));
+    for (let i = 0; i < tipCount; i++) {
       lvs.push({
         p: pos.clone().add(new THREE.Vector3(
-          (Math.random()-0.5)*0.6, -Math.random()*0.4, (Math.random()-0.5)*0.6
+          (Math.random()-0.5)*0.8,
+          -Math.random()*0.5,
+          (Math.random()-0.5)*0.8
         )),
         o: gIdx, ph: Math.random(), sun: isSun,
         gt: rootTipGT, ui: rootUserIdx, root: true,
       });
     }
 
-    // Store tip position for roots too
     userTips[g.n + '_root'] = pos.clone();
   });
 
