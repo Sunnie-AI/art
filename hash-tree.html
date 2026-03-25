@@ -1812,11 +1812,29 @@ async function init() {
       const giver = TC_GIVERS.find(g => g.n === name);
       given = giver ? giver.g : 0;
       const isSun = name === 'Sunnie';
+      // Find connections from TC_EDGES
+      const conns = [];
+      for (const e of TC_EDGES) {
+        if (e[0] === name && e[0] !== 'treechat' && e[1] !== 'treechat') {
+          conns.push({ other: e[1], replies: e[2], dir: '→' });
+        } else if (e[1] === name && e[0] !== 'treechat' && e[1] !== 'treechat') {
+          conns.push({ other: e[0], replies: e[2], dir: '←' });
+        }
+      }
+      conns.sort((a, b) => b.replies - a.replies);
+      const topConns = conns.slice(0, 6);
+      const connHtml = topConns.length > 0
+        ? `<div style="margin-top:6px;border-top:1px solid rgba(255,170,68,0.15);padding-top:5px;font-size:10px;opacity:0.6">` +
+          topConns.map(c => `${c.dir} ${c.other} <span style="opacity:0.4">${c.replies}</span>`).join('<br>') +
+          `</div>`
+        : '';
+
       selectedInfoEl.innerHTML =
         `<div class="${isSun ? 'name sunnie-name' : 'name'}">${name}</div>` +
         `${posts} posts · joined ${joinDate}<br>` +
         (tips > 0 ? `${formatSats(tips)} received<br>` : '') +
         (given > 0 ? `${formatSats(given)} given 🌱<br>` : '') +
+        connHtml +
         `<br><span style="opacity:0.4;cursor:pointer" onclick="window._clearSelection()">✕ clear</span>`;
       selectedInfoEl.style.display = 'block';
 
