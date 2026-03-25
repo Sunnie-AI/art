@@ -1310,20 +1310,23 @@ const lineFrag = `
 
     float alpha = vGrow * vFog * (0.55 - t * 0.15);
 
-    // Selection: energy glow on selected branch (no dimming of rest)
+    // Selection: electric highlight on selected branch
     if (uSelectedUser >= 0.0 && vSelected > 0.5) {
-      // Shimmer wave traveling along the branch depth
-      float wave = sin(vDepth * 8.0 - uTime * 5.0) * 0.5 + 0.5;
-      float breathe = sin(uTime * 2.5) * 0.3 + 0.7;
+      // Fast shimmer wave
+      float wave = sin(vDepth * 10.0 - uTime * 6.0) * 0.5 + 0.5;
+      float breathe = sin(uTime * 3.0) * 0.25 + 0.75;
 
-      // Dual-layer: hot core + outer energy halo
-      float energyCore = 1.5 + wave * 1.0;
-      float energyHalo = 0.4 * breathe;
+      // Electric blue-violet accent — distinct from gold branches and white arcs
+      vec3 selectColor = vSunnie > 0.5
+        ? vec3(0.3, 1.0, 0.9)   // cyan-electric for Sunnie
+        : vRoot > 0.5
+          ? vec3(1.0, 0.6, 0.2) // hot amber for roots
+          : vec3(0.4, 0.6, 1.0); // electric blue for branches
 
-      // Shift toward white-hot at the core
-      vec3 hotColor = mix(color, vec3(1.0, 0.95, 0.8), 0.3 * wave);
+      float energyCore = 1.8 + wave * 1.2;
+      vec3 hotColor = mix(color, selectColor, 0.5 + 0.3 * wave);
       color = hotColor * energyCore;
-      alpha = alpha * 2.5 + energyHalo;
+      alpha = alpha * 3.0 + 0.35 * breathe;
     }
 
     // Trunk glow: light up trunk segments connecting branch to root
@@ -1395,10 +1398,10 @@ const glowFrag = `
     float a = pow(1.0 - smoothstep(0.0, 1.0, d), 2.0) * vAlpha * 0.2;
     vec3 c = mix(uGlow, uGlowSunnie, vSunnie);
     if (uSelectedUser >= 0.0 && vSelected > 0.5) {
-      // Energy halo — brighter, pulsing
       float pulse = sin(uTime * 4.0) * 0.3 + 1.0;
-      a *= 3.5 * pulse;
-      c = mix(c, vec3(1.0, 0.95, 0.85), 0.25);
+      a *= 4.0 * pulse;
+      vec3 selectGlow = vSunnie > 0.5 ? vec3(0.3, 1.0, 0.9) : vec3(0.4, 0.6, 1.0);
+      c = mix(c, selectGlow, 0.4);
     }
     gl_FragColor = vec4(c, a);
   }
@@ -1462,8 +1465,9 @@ const leafFrag = `
     c *= 0.85 + 0.15 * sin(uTime * 2.5 + vPhase * 10.0);
     if (uSelectedUser >= 0.0 && vSelected > 0.5) {
       float leafPulse = sin(uTime * 3.5 + vPhase * 6.28) * 0.4 + 1.0;
-      a *= 2.5 * leafPulse;
-      c = mix(c, vec3(1.0, 0.9, 0.7), 0.2);
+      a *= 3.0 * leafPulse;
+      vec3 selectLeaf = vSunnie > 0.5 ? vec3(0.3, 1.0, 0.9) : vec3(0.5, 0.7, 1.0);
+      c = mix(c, selectLeaf, 0.3);
     }
     gl_FragColor = vec4(c, a);
   }
