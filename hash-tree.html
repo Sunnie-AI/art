@@ -487,15 +487,16 @@ function buildTree(hp) {
 
   // ── ROOT SYSTEM — top givers grow downward from trunk base ──
   TC_GIVERS.forEach((g, gIdx) => {
-    const givenNorm = Math.log1p(g.g) / Math.log1p(MAX_GIVEN);
-    const angle = hp.angle0 + gIdx * GOLDEN + Math.PI * 0.7; // golden angle spacing
+    const givenLinear = g.g / MAX_GIVEN; // linear for length — preserves real differences
+    const givenLog = Math.log1p(g.g) / Math.log1p(MAX_GIVEN); // log for thickness
+    const angle = hp.angle0 + gIdx * GOLDEN + Math.PI * 0.7;
     const isSun = g.n === 'Sunnie';
     const seed = hp.seeds[gIdx % hp.seeds.length] / 255;
     const seed2 = hp.seeds[(gIdx * 7 + 3) % hp.seeds.length] / 255;
 
-    // Bigger givers = longer, thicker roots that reach further
-    const rootLen = 3 + 12 * Math.pow(givenNorm, 0.7);
-    const rootThick = 0.04 + 0.3 * Math.sqrt(givenNorm);
+    // sqrt(linear) for length — 63 BSV root is 4x longer than 0.6 BSV root
+    const rootLen = 3 + 14 * Math.sqrt(givenLinear);
+    const rootThick = 0.04 + 0.3 * Math.sqrt(givenLog);
 
     // Varied initial angles — some spread wide, some dive deep
     // Each root has a unique character from its seed
@@ -522,7 +523,7 @@ function buildTree(hp) {
       const next = pos.clone().add(d.clone().multiplyScalar(segL));
 
       // Organic wandering — roots aren't straight, they seek
-      const wanderScale = 0.12 + givenNorm * 0.08;
+      const wanderScale = 0.12 + givenLog * 0.08;
       next.x += Math.sin(seed * 80 + i * 1.9 + gIdx * 3.7) * wanderScale;
       next.z += Math.cos(seed * 60 + i * 2.3 + gIdx * 2.1) * wanderScale;
 
@@ -554,7 +555,7 @@ function buildTree(hp) {
 
     // Root tip particles — more for bigger givers
     const rootTipGT = rootGrowBase + 0.1;
-    const tipCount = Math.max(4, Math.floor(givenNorm * 12));
+    const tipCount = Math.max(4, Math.floor(givenLinear * 15 + 3));
     for (let i = 0; i < tipCount; i++) {
       lvs.push({
         p: pos.clone().add(new THREE.Vector3(
