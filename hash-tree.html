@@ -1548,16 +1548,19 @@ async function init() {
   for (const s of segs) {
     const gt = s.gt ?? (s.d + s.si * 0.8) / 10;
     const origin = s.bo ?? s.s;
-    // Trunk segments (d=0) get their position ratio; branches get -1
-    const trunkT = s.d === 0 && !s.root ? s.si : -1;
+    // Trunk segments (d=0): start vertex gets si, end vertex gets si + step
+    // This lets the varying interpolate smoothly so the glow cutoff is pixel-precise
+    const isTrunk = s.d === 0 && !s.root;
+    const trunkTStart = isTrunk ? s.si : -1;
+    const trunkTEnd = isTrunk ? s.si + 1/24 : -1; // 24 = tSegs
     // start vertex
     lPos.push(s.s.x,s.s.y,s.s.z);
     lStart.push(origin.x,origin.y,origin.z);
-    lDepth.push(s.d); lGrow.push(gt); lEnd.push(0); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1); lRoot.push(s.root?1:0); lTrunkT.push(trunkT);
+    lDepth.push(s.d); lGrow.push(gt); lEnd.push(0); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1); lRoot.push(s.root?1:0); lTrunkT.push(trunkTStart);
     // end vertex
     lPos.push(s.e.x,s.e.y,s.e.z);
     lStart.push(origin.x,origin.y,origin.z);
-    lDepth.push(s.d); lGrow.push(gt); lEnd.push(1); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1); lRoot.push(s.root?1:0); lTrunkT.push(trunkT);
+    lDepth.push(s.d); lGrow.push(gt); lEnd.push(1); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1); lRoot.push(s.root?1:0); lTrunkT.push(trunkTEnd);
   }
 
   const lineGeo = new THREE.BufferGeometry();
