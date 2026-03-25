@@ -1231,17 +1231,20 @@ const lineVert = `
   attribute float aIsSunnie;
   attribute float aUserIdx;
   attribute float aIsRoot;
+  attribute float aTrunkT;
   attribute vec3 aStartPos;
   uniform float uTime;
   uniform float uGrowth;
   uniform float uSelectedUser;
   uniform float uSelectedRoot;
+  uniform float uTrunkGlowMax;
   varying float vDepth;
   varying float vGrow;
   varying float vFog;
   varying float vSunnie;
   varying float vSelected;
   varying float vRoot;
+  varying float vTrunkT;
 
   void main() {
     float segGrow = clamp((uGrowth - aGrowTime) / 0.04, 0.0, 1.0);
@@ -1249,6 +1252,7 @@ const lineVert = `
     vDepth = aDepth;
     vSunnie = aIsSunnie;
     vRoot = aIsRoot;
+    vTrunkT = aTrunkT;
     vSelected = ((uSelectedUser >= 0.0 && abs(aUserIdx - uSelectedUser) < 0.5) ||
                  (uSelectedRoot >= 0.0 && abs(aUserIdx - uSelectedRoot) < 0.5)) ? 1.0 : 0.0;
 
@@ -1270,6 +1274,7 @@ const lineVert = `
 const lineFrag = `
   uniform float uTime;
   uniform float uSelectedUser;
+  uniform float uTrunkGlowMax;
   uniform vec3 uTrunk;
   uniform vec3 uMid;
   uniform vec3 uTip;
@@ -1281,6 +1286,7 @@ const lineFrag = `
   varying float vSunnie;
   varying float vSelected;
   varying float vRoot;
+  varying float vTrunkT;
 
   void main() {
     if (vGrow < 0.01) discard;
@@ -1318,6 +1324,14 @@ const lineFrag = `
       vec3 hotColor = mix(color, vec3(1.0, 0.95, 0.8), 0.3 * wave);
       color = hotColor * energyCore;
       alpha = alpha * 2.5 + energyHalo;
+    }
+
+    // Trunk glow: light up trunk segments connecting branch to root
+    if (uTrunkGlowMax >= 0.0 && vDepth < 0.1 && vTrunkT >= 0.0 && vTrunkT <= uTrunkGlowMax) {
+      float trunkWave = sin(vTrunkT * 20.0 - uTime * 4.0) * 0.5 + 0.5;
+      float trunkPulse = sin(uTime * 2.0) * 0.2 + 0.8;
+      color = mix(color, vec3(1.0, 0.85, 0.5), 0.35 * trunkWave);
+      alpha = alpha * (1.5 + trunkWave * 1.0) + 0.15 * trunkPulse;
     }
 
     gl_FragColor = vec4(color, min(alpha, 1.0));
@@ -1525,18 +1539,20 @@ async function init() {
   const { segs, lvs, gpts, conns } = buildTree(hp);
 
   // ── Branch lines ──
-  const lPos=[], lStart=[], lDepth=[], lGrow=[], lEnd=[], lSun=[], lUi=[], lRoot=[];
+  const lPos=[], lStart=[], lDepth=[], lGrow=[], lEnd=[], lSun=[], lUi=[], lRoot=[], lTrunkT=[];
   for (const s of segs) {
     const gt = s.gt ?? (s.d + s.si * 0.8) / 10;
     const origin = s.bo ?? s.s;
+    // Trunk segments (d=0) get their position ratio; branches get -1
+    const trunkT = s.d === 0 && !s.root ? s.si : -1;
     // start vertex
     lPos.push(s.s.x,s.s.y,s.s.z);
     lStart.push(origin.x,origin.y,origin.z);
-    lDepth.push(s.d); lGrow.push(gt); lEnd.push(0); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1); lRoot.push(s.root?1:0);
+    lDepth.push(s.d); lGrow.push(gt); lEnd.push(0); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1); lRoot.push(s.root?1:0); lTrunkT.push(trunkT);
     // end vertex
     lPos.push(s.e.x,s.e.y,s.e.z);
     lStart.push(origin.x,origin.y,origin.z);
-    lDepth.push(s.d); lGrow.push(gt); lEnd.push(1); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1); lRoot.push(s.root?1:0);
+    lDepth.push(s.d); lGrow.push(gt); lEnd.push(1); lSun.push(s.sun?1:0); lUi.push(s.ui ?? -1); lRoot.push(s.root?1:0); lTrunkT.push(trunkT);
   }
 
   const lineGeo = new THREE.BufferGeometry();
@@ -1548,11 +1564,12 @@ async function init() {
   lineGeo.setAttribute('aIsSunnie', new THREE.Float32BufferAttribute(lSun, 1));
   lineGeo.setAttribute('aUserIdx', new THREE.Float32BufferAttribute(lUi, 1));
   lineGeo.setAttribute('aIsRoot', new THREE.Float32BufferAttribute(lRoot, 1));
+  lineGeo.setAttribute('aTrunkT', new THREE.Float32BufferAttribute(lTrunkT, 1));
 
   const lineMat = new THREE.ShaderMaterial({
     vertexShader: lineVert, fragmentShader: lineFrag,
     uniforms: {
-      uTime:{value:0}, uGrowth:{value:0}, uSelectedUser:{value:-1}, uSelectedRoot:{value:-1},
+      uTime:{value:0}, uGrowth:{value:0}, uSelectedUser:{value:-1}, uSelectedRoot:{value:-1}, uTrunkGlowMax:{value:-1},
       uTrunk:{value:PAL.trunk}, uMid:{value:PAL.mid}, uTip:{value:PAL.tip},
       uSunnie:{value:PAL.sun}, uSunnieTip:{value:PAL.sunTip},
     },
@@ -1741,9 +1758,20 @@ async function init() {
   function selectUser(idx, rootIdx) {
     selectedUserIdx = idx;
     // For dual selection (branch+root), use uSelectedUser for branch and uSelectedRoot for root
+    // Calculate trunk glow: if user has both branch and root, light the trunk between them
+    let trunkGlow = -1;
+    if (idx >= 0 && idx < TC_USERS.length && (rootIdx ?? -1) >= 0) {
+      // User has both a branch and root — find their branch attachment height
+      const u = TC_USERS[idx];
+      const days = (new Date(u.s) - GENESIS) / 86400000;
+      const hRatio = Math.max(0.06, Math.min(0.95, days / TOTAL_DAYS));
+      trunkGlow = hRatio; // light trunk from base to branch attachment
+    }
+
     for (const m of allMats) {
       if (m.uniforms.uSelectedUser) m.uniforms.uSelectedUser.value = idx;
       if (m.uniforms.uSelectedRoot) m.uniforms.uSelectedRoot.value = rootIdx ?? -1;
+      if (m.uniforms.uTrunkGlowMax) m.uniforms.uTrunkGlowMax.value = trunkGlow;
     }
     searchResults.style.display = 'none';
 
