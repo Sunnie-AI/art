@@ -41,15 +41,16 @@
   <span class="highlight">The Giving Tree</span> — TreeChat Tip Economy<br>
   50 users · 314 reply edges · 95,000 tip transactions<br>
   <span class="sunnie">448 BSV</span> total platform economy<br>
-  Node size = tip activity · Color = giver↔receiver ratio<br>
-  Particles flow from givers toward receivers
+  Node size = tip activity · Color = giver↔receiver<br>
+  Particles = sats flowing from givers to receivers
 </div>
 <div id="legend">
   <span class="legend-dot" style="background:#ff6622;"></span>Net giver (patron)<br>
   <span class="legend-dot" style="background:#ccaa22;"></span>Balanced<br>
   <span class="legend-dot" style="background:#22ccaa;"></span>Net receiver (creator)<br>
   <br>
-  Drag to rearrange · Hover for details
+  Scroll to zoom · Drag space to pan<br>
+  Drag node to pin · Double-click to unpin
 </div>
 <div id="tooltip"></div>
 
@@ -179,20 +180,31 @@ function simulate() {
   nodes.forEach(n => {
     n.vx *= 0.92;
     n.vy *= 0.92;
-    if (!n.dragging) {
+    if (!n.dragging && !n.pinned) {
       n.x += n.vx * dt;
       n.y += n.vy * dt;
-      // Keep in bounds
-      n.x = Math.max(n.radius + 10, Math.min(W - n.radius - 10, n.x));
-      n.y = Math.max(n.radius + 10, Math.min(H - n.radius - 10, n.y));
     }
   });
 }
 
+// Camera (zoom & pan)
+let cam = { x: 0, y: 0, zoom: 1 };
+
+function screenToWorld(sx, sy) {
+  return {
+    x: (sx - W/2) / cam.zoom + W/2 - cam.x,
+    y: (sy - H/2) / cam.zoom + H/2 - cam.y
+  };
+}
+
 // Render
 function draw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = 'rgba(10,10,15,0.25)';
   ctx.fillRect(0, 0, W, H);
+
+  // Apply camera transform
+  ctx.setTransform(cam.zoom, 0, 0, cam.zoom, W/2 - (W/2 - cam.x) * cam.zoom, H/2 - (H/2 - cam.y) * cam.zoom);
 
   // Edges
   edges.forEach(e => {
@@ -270,23 +282,31 @@ function draw() {
     }
   });
 
+  // Reset transform for UI
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
   // Spawn particles
   for (let i = 0; i < 4; i++) spawnParticle();
 }
 
-// Hover
-let hoveredNode = null;
-canvas.addEventListener('mousemove', (e) => {
-  const mx = e.clientX, my = e.clientY;
-  hoveredNode = null;
+// Hit test in world coords
+function nodeAt(sx, sy) {
+  const w = screenToWorld(sx, sy);
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
-    const dx = mx - n.x, dy = my - n.y;
-    if (dx*dx + dy*dy < (n.radius + 8) * (n.radius + 8)) {
-      hoveredNode = n;
-      break;
-    }
+    const dx = w.x - n.x, dy = w.y - n.y;
+    const hitR = (n.radius + 8) / cam.zoom; // slightly larger hit area when zoomed out
+    if (dx*dx + dy*dy < (n.radius + 8) * (n.radius + 8)) return n;
   }
+  return null;
+}
+
+// Hover
+let hoveredNode = null;
+function updateHover(e) {
+  const mx = e.clientX, my = e.clientY;
+  if (dragNode) return; // don't update hover while dragging
+  hoveredNode = nodeAt(mx, my);
   if (hoveredNode) {
     const n = hoveredNode;
     const givenBSV = (n.given / 1e8).toFixed(2);
@@ -301,37 +321,84 @@ canvas.addEventListener('mousemove', (e) => {
     tooltip.style.display = 'block';
     tooltip.style.left = (mx + 16) + 'px';
     tooltip.style.top = (my - 16) + 'px';
-    // Keep tooltip in view
     const rect = tooltip.getBoundingClientRect();
     if (rect.right > W) tooltip.style.left = (mx - rect.width - 16) + 'px';
     if (rect.bottom > H) tooltip.style.top = (my - rect.height - 16) + 'px';
-    canvas.style.cursor = 'pointer';
+    canvas.style.cursor = 'grab';
   } else {
     tooltip.style.display = 'none';
-    canvas.style.cursor = 'default';
+    canvas.style.cursor = isPanning ? 'grabbing' : 'default';
+  }
+}
+canvas.addEventListener('mousemove', updateHover);
+
+// Drag nodes (left click on node) — pinned after release
+let dragNode = null;
+let isPanning = false;
+let panStart = { x: 0, y: 0 };
+
+canvas.addEventListener('mousedown', (e) => {
+  const hit = nodeAt(e.clientX, e.clientY);
+  if (hit && e.button === 0) {
+    // Drag node
+    dragNode = hit;
+    dragNode.dragging = true;
+    canvas.style.cursor = 'grabbing';
+  } else {
+    // Pan (any click on empty space, or middle/right click)
+    isPanning = true;
+    panStart = { x: e.clientX, y: e.clientY };
+    canvas.style.cursor = 'grabbing';
   }
 });
 
-// Drag
-let dragNode = null;
-canvas.addEventListener('mousedown', (e) => {
-  if (hoveredNode) {
-    dragNode = hoveredNode;
-    dragNode.dragging = true;
-  }
-});
 canvas.addEventListener('mousemove', (e) => {
   if (dragNode) {
-    dragNode.x = e.clientX;
-    dragNode.y = e.clientY;
+    const w = screenToWorld(e.clientX, e.clientY);
+    dragNode.x = w.x;
+    dragNode.y = w.y;
+    dragNode.vx = 0;
+    dragNode.vy = 0;
+  } else if (isPanning) {
+    cam.x += (e.clientX - panStart.x) / cam.zoom;
+    cam.y += (e.clientY - panStart.y) / cam.zoom;
+    panStart = { x: e.clientX, y: e.clientY };
   }
 });
-canvas.addEventListener('mouseup', () => {
+
+canvas.addEventListener('mouseup', (e) => {
   if (dragNode) {
     dragNode.dragging = false;
+    dragNode.pinned = true; // stays where you put it
     dragNode = null;
   }
+  isPanning = false;
+  canvas.style.cursor = 'default';
 });
+
+// Double-click to unpin
+canvas.addEventListener('dblclick', (e) => {
+  const hit = nodeAt(e.clientX, e.clientY);
+  if (hit && hit.pinned) {
+    hit.pinned = false;
+  }
+});
+
+// Zoom (mouse wheel) — zooms toward cursor position
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const oldZoom = cam.zoom;
+  const zoomFactor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  cam.zoom = Math.max(0.15, Math.min(10, cam.zoom * zoomFactor));
+
+  // Keep the world point under the cursor stationary
+  const wBefore = screenToWorld(e.clientX, e.clientY);
+  // After zoom change, recalc and adjust cam to compensate
+  const wAfterX = (e.clientX - W/2) / cam.zoom + W/2 - cam.x;
+  const wAfterY = (e.clientY - H/2) / cam.zoom + H/2 - cam.y;
+  cam.x += wAfterX - wBefore.x;
+  cam.y += wAfterY - wBefore.y;
+}, { passive: false });
 
 // Animation
 function loop() {
