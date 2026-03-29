@@ -162,10 +162,6 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   // ═══════════════════════════════════════════════════
   //  CONSTANTS & LOOKUPS
   // ═══════════════════════════════════════════════════
-  const COLORS = {
-    creator: '#f0a030', fan: '#00d4ff', mixed: '#a080e0',
-    crossRing: '#f0a030',
-  };
   const edgeColors = {
     like: '#00d4ff', transfer: '#f0a030', buy: '#ff6b9d',
     mint: '#a855f7', burn: '#ef4444',
@@ -175,16 +171,15 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   const crossData = DATA.crossplatform;
   const statsData = DATA.stats;
   const temporal = DATA.temporal;
+  const unames = DATA.usernames || {};
 
-  // User lookups
   const userMap = {};
   userData.users.forEach(u => userMap[u.address] = u);
   const crossMap = {};
   crossData.crossplatform_users.forEach(c => crossMap[c.address] = c);
 
-  // Canonical address merging (same user, multiple addresses)
+  // Canonical address merging
   const nameToAddrs = {};
-  const unames = DATA.usernames || {};
   for (const addr in unames) {
     const name = unames[addr].display || unames[addr].username;
     if (!nameToAddrs[name]) nameToAddrs[name] = [];
@@ -197,9 +192,7 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
       let best = addrs[0], bestCount = 0;
       for (const a of addrs) {
         let c = 0;
-        (DATA.graph ? DATA.graph.edges : temporal.edges).forEach(e => {
-          if (e.from === a || e.to === a) c += (e.count || 1);
-        });
+        temporal.edges.forEach(e => { if (e.from === a || e.to === a) c++; });
         if (c > bestCount) { bestCount = c; best = a; }
       }
       for (const a of addrs) canonical[a] = best;
@@ -207,7 +200,6 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   }
   const resolve = addr => canonical[addr] || addr;
 
-  // Merge user data for canonical addresses
   for (const addr in canonical) {
     const canon = canonical[addr];
     if (addr !== canon && userMap[addr] && userMap[canon]) {
@@ -223,155 +215,182 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   const DATE_START = new Date(temporal.dateRange.start).getTime();
   const DATE_END = new Date(temporal.dateRange.end).getTime();
   const DATE_RANGE = DATE_END - DATE_START;
-  const snapDates = temporal.snapshots.map(s => s.until);
+  const PLATFORM_ID = '__3dordi__';
 
-  // Pre-process temporal edges: resolve addresses, compute first_seen
-  const temporalEdges = temporal.edges.map(e => {
-    const from = resolve(e.from), to = resolve(e.to);
-    return {
-      from, to, type: e.type,
-      first_seen: e.first_seen,
-      first_seen_ms: new Date(e.first_seen).getTime(),
-      counts: e.counts,  // [{d, c}] cumulative counts at each snapshot
-    };
-  }).filter(e => e.from !== e.to);  // skip self-loops
+  // ═══════════════════════════════════════════════════
+  //  BUILD FULL GRAPH ONCE (all temporal edges at max counts)
+  //  Timeline uses visibility, not data replacement
+  // ═══════════════════════════════════════════════════
+
+  // Resolve and merge temporal edges at their final (max) counts
+  const mergedMap = {};
+  for (const te of temporal.edges) {
+    const from = resolve(te.from), to = resolve(te.to);
+    if (from === to) continue;
+    const key = from + '|' + to + '|' + te.type;
+    if (!mergedMap[key]) {
+      mergedMap[key] = {
+        from, to, type: te.type,
+        first_seen_ms: new Date(te.first_seen).getTime(),
+        snapCounts: te.counts,  // [{d, c}]
+        maxCount: 0,
+      };
+    }
+    // Earliest first_seen
+    const fs = new Date(te.first_seen).getTime();
+    if (fs < mergedMap[key].first_seen_ms) mergedMap[key].first_seen_ms = fs;
+    // Merge snap counts (take max at each date)
+    const last = te.counts[te.counts.length - 1];
+    if (last) mergedMap[key].maxCount += last.c;
+  }
+  const allEdges = Object.values(mergedMap);
+
+  // Compute full-timeline node stats for sizing/roles
+  const inD = {}, outD = {};
+  allEdges.forEach(e => {
+    outD[e.from] = (outD[e.from] || 0) + e.maxCount;
+    inD[e.to] = (inD[e.to] || 0) + e.maxCount;
+  });
+  const graphAddrs = new Set();
+  allEdges.forEach(e => { graphAddrs.add(e.from); graphAddrs.add(e.to); });
+
+  let maxTotal = 0;
+  graphAddrs.forEach(addr => {
+    const t = (inD[addr]||0) + (outD[addr]||0);
+    if (t > maxTotal) maxTotal = t;
+  });
+
+  // Build all nodes
+  const nodeFirstSeen = {};  // addr → earliest edge first_seen_ms
+  allEdges.forEach(e => {
+    if (!nodeFirstSeen[e.from] || e.first_seen_ms < nodeFirstSeen[e.from]) nodeFirstSeen[e.from] = e.first_seen_ms;
+    if (!nodeFirstSeen[e.to] || e.first_seen_ms < nodeFirstSeen[e.to]) nodeFirstSeen[e.to] = e.first_seen_ms;
+  });
+
+  const allNodes = [];
+  let totalMints = 0, totalBurns = 0;
+  graphAddrs.forEach(addr => {
+    const u = userMap[addr] || {};
+    const cross = crossMap[addr];
+    const inc = inD[addr] || 0, outc = outD[addr] || 0;
+    const total = inc + outc;
+
+    let role;
+    if (inc > outc * 2) role = 'Creator';
+    else if (outc > inc * 2) role = 'Fan';
+    else role = 'Mixed';
+
+    const intensity = maxTotal > 0 ? Math.log(1 + total) / Math.log(1 + maxTotal) : 0;
+    const roleHSL = role === 'Creator' ? [36, 87, 56] : role === 'Fan' ? [187, 100, 50] : [260, 45, 69];
+    const lVal = roleHSL[2] - 11 + intensity * 22;
+    const sVal = Math.min(100, roleHSL[1] + intensity * 12);
+    const color = `hsl(${roleHSL[0]}, ${sVal}%, ${lVal}%)`;
+    const size = Math.max(2, Math.min(12, Math.pow(total, 0.35)));
+    const mints = u.mints || 0, burns = u.burns || 0;
+    totalMints += mints; totalBurns += burns;
+
+    allNodes.push({
+      id: addr,
+      name: unames[addr] ? unames[addr].display : cross ? cross.treechat_username : addr.slice(0,12)+'...',
+      fullAddr: addr, role, color, size,
+      mints, likes: u.likes||0, buys: u.buys||0, transfers: u.transfers||0, burns,
+      total, inc, outc, intensity,
+      isCross: !!cross, tcName: cross ? cross.treechat_username : null, tcPosts: cross ? cross.treechat_posts : null,
+      first_seen_ms: nodeFirstSeen[addr] || DATE_START,
+    });
+  });
+
+  // Platform node
+  allNodes.push({
+    id: PLATFORM_ID, name: '3D Ordi', fullAddr: 'Platform', role: 'Platform',
+    color: 'rgb(80, 35, 140)', size: 14,
+    mints: totalMints, likes: 0, buys: 0, transfers: 0, burns: totalBurns,
+    total: totalMints + totalBurns, inc: totalBurns, outc: totalMints,
+    intensity: 1, isCross: false, isPlatform: true, tcName: null, tcPosts: null,
+    first_seen_ms: DATE_START,
+  });
+
+  // Mint/burn edges (always visible when node is)
+  allNodes.forEach(n => {
+    if (n.id !== PLATFORM_ID && n.mints > 0)
+      allEdges.push({ from: PLATFORM_ID, to: n.id, type: 'mint', maxCount: n.mints, first_seen_ms: n.first_seen_ms, snapCounts: null });
+    if (n.id !== PLATFORM_ID && n.burns > 0)
+      allEdges.push({ from: n.id, to: PLATFORM_ID, type: 'burn', maxCount: n.burns, first_seen_ms: n.first_seen_ms, snapCounts: null });
+  });
+
+  // Filter isolated pairs
+  const degree = {};
+  allEdges.forEach(e => { degree[e.from] = (degree[e.from]||0)+1; degree[e.to] = (degree[e.to]||0)+1; });
+  const filteredEdges = allEdges.filter(e => !(degree[e.from]===1 && degree[e.to]===1));
+  const filteredAddrs = new Set();
+  filteredEdges.forEach(e => { filteredAddrs.add(e.from); filteredAddrs.add(e.to); });
+  const filteredNodes = allNodes.filter(n => filteredAddrs.has(n.id));
+
+  // Build links with temporal metadata
+  const links = filteredEdges.map(e => ({
+    source: e.from, target: e.to, type: e.type,
+    count: e.maxCount,  // mutable — updated by timeline
+    maxCount: e.maxCount,
+    first_seen_ms: e.first_seen_ms,
+    snapCounts: e.snapCounts,
+    color: edgeColors[e.type] || '#666',
+  }));
 
   // ═══════════════════════════════════════════════════
   //  TIMELINE STATE
   // ═══════════════════════════════════════════════════
   const speeds = [0.1, 0.25, 0.5, 1, 2, 4, 8, 16];
-  let speedIdx = 3;  // start at 1x
+  let speedIdx = 3;
   let playing = false;
-  let currentDate = DATE_END;  // start at end (full view)
-  const PLATFORM_ID = '__3dordi__';
+  let currentDate = DATE_END;
+  const vis = { like: true, transfer: true, buy: true, mint: true, burn: true };
 
-  // Node position cache — preserve positions across recomputes
-  const nodePositions = {};
-
-  // ═══════════════════════════════════════════════════
-  //  RECOMPUTE: filter graph by currentDate
-  // ═══════════════════════════════════════════════════
-  function recompute() {
+  function updateVisibility() {
     const cutoff = new Date(currentDate).toISOString().slice(0, 10);
 
-    // Filter edges visible at this date, interpolate counts
-    const activeEdges = [];
-    const mergedMap = {};
-    for (const te of temporalEdges) {
-      if (te.first_seen_ms > currentDate) continue;
-      // Find count at current time (last snapshot ≤ cutoff)
-      let count = 0;
-      for (const snap of te.counts) {
-        if (snap.d <= cutoff) count = snap.c;
-        else break;
+    // Update edge counts at current time
+    let visibleEdges = 0, visibleNodes = 0, totalTxs = 0;
+    for (const l of links) {
+      if (l.first_seen_ms > currentDate) { l._visible = false; continue; }
+      if (l.snapCounts) {
+        let count = 0;
+        for (const snap of l.snapCounts) {
+          if (snap.d <= cutoff) count = snap.c; else break;
+        }
+        l.count = count;
       }
-      if (count <= 0) continue;
-      // Merge duplicate edges (from canonical resolution)
-      const key = te.from + '|' + te.to + '|' + te.type;
-      if (!mergedMap[key]) { mergedMap[key] = { from: te.from, to: te.to, type: te.type, count: 0 }; }
-      mergedMap[key].count += count;
+      l._visible = l.count > 0;
+      if (l._visible) { visibleEdges++; totalTxs += l.count; }
     }
-    const resolvedEdges = Object.values(mergedMap);
 
-    // Compute node stats from active edges
-    const inD = {}, outD = {};
-    resolvedEdges.forEach(e => {
-      outD[e.from] = (outD[e.from] || 0) + e.count;
-      inD[e.to] = (inD[e.to] || 0) + e.count;
-    });
-    const graphAddrs = new Set();
-    resolvedEdges.forEach(e => { graphAddrs.add(e.from); graphAddrs.add(e.to); });
+    const visibleAddrs = new Set();
+    for (const l of links) {
+      if (l._visible) {
+        const src = typeof l.source === 'object' ? l.source.id : l.source;
+        const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+        visibleAddrs.add(src); visibleAddrs.add(tgt);
+      }
+    }
+    visibleAddrs.add(PLATFORM_ID);
+    for (const n of filteredNodes) {
+      n._visible = visibleAddrs.has(n.id);
+      if (n._visible) visibleNodes++;
+    }
 
-    let maxTotal = 0;
-    graphAddrs.forEach(addr => {
-      const t = (inD[addr]||0) + (outD[addr]||0);
-      if (t > maxTotal) maxTotal = t;
-    });
-
-    // Build nodes
-    const nodes = [];
-    let totalMints = 0, totalBurns = 0;
-    graphAddrs.forEach(addr => {
-      const u = userMap[addr] || {};
-      const cross = crossMap[addr];
-      const inc = inD[addr] || 0;
-      const outc = outD[addr] || 0;
-      const total = inc + outc;
-
-      let role;
-      if (inc > outc * 2) role = 'Creator';
-      else if (outc > inc * 2) role = 'Fan';
-      else role = 'Mixed';
-
-      const intensity = maxTotal > 0 ? Math.log(1 + total) / Math.log(1 + maxTotal) : 0;
-      const roleHSL = role === 'Creator' ? [36, 87, 56]
-                     : role === 'Fan'     ? [187, 100, 50]
-                     :                      [260, 45, 69];
-      const lRange = 22;
-      const sBoost = intensity * 12;
-      const lVal = roleHSL[2] - lRange/2 + intensity * lRange;
-      const sVal = Math.min(100, roleHSL[1] + sBoost);
-      const color = `hsl(${roleHSL[0]}, ${sVal}%, ${lVal}%)`;
-      const size = Math.max(2, Math.min(12, Math.pow(total, 0.35)));
-
-      const mints = u.mints || 0, burns = u.burns || 0;
-      totalMints += mints; totalBurns += burns;
-
-      // Preserve position
-      const pos = nodePositions[addr] || {};
-      nodes.push({
-        id: addr, name: (unames[addr]) ? unames[addr].display : cross ? cross.treechat_username : addr.slice(0,12)+'...',
-        fullAddr: addr, role, color, size,
-        mints, likes: u.likes||0, buys: u.buys||0, transfers: u.transfers||0, burns,
-        total, inc, outc, intensity,
-        isCross: !!cross, tcName: cross ? cross.treechat_username : null, tcPosts: cross ? cross.treechat_posts : null,
-        x: pos.x, y: pos.y, z: pos.z,
-      });
-    });
-
-    // Platform node
-    nodes.push({
-      id: PLATFORM_ID, name: '3D Ordi', fullAddr: 'Platform', role: 'Platform',
-      color: 'rgb(80, 35, 140)', size: 14,
-      mints: totalMints, likes: 0, buys: 0, transfers: 0, burns: totalBurns,
-      total: totalMints + totalBurns, inc: totalBurns, outc: totalMints,
-      intensity: 1, isCross: false, isPlatform: true, tcName: null, tcPosts: null,
-      x: nodePositions[PLATFORM_ID]?.x, y: nodePositions[PLATFORM_ID]?.y, z: nodePositions[PLATFORM_ID]?.z,
-    });
-
-    // Mint/burn edges
-    nodes.forEach(n => {
-      if (n.id !== PLATFORM_ID && n.mints > 0)
-        resolvedEdges.push({ from: PLATFORM_ID, to: n.id, type: 'mint', count: n.mints });
-      if (n.id !== PLATFORM_ID && n.burns > 0)
-        resolvedEdges.push({ from: n.id, to: PLATFORM_ID, type: 'burn', count: n.burns });
-    });
-
-    // Filter isolated pairs
-    const degree = {};
-    resolvedEdges.forEach(e => { degree[e.from] = (degree[e.from]||0)+1; degree[e.to] = (degree[e.to]||0)+1; });
-    const filteredEdges = resolvedEdges.filter(e => !(degree[e.from]===1 && degree[e.to]===1));
-    const filteredAddrs = new Set();
-    filteredEdges.forEach(e => { filteredAddrs.add(e.from); filteredAddrs.add(e.to); });
-    const filteredNodes = nodes.filter(n => filteredAddrs.has(n.id));
-
-    const links = filteredEdges.map(e => ({
-      source: e.from, target: e.to, type: e.type, count: e.count,
-      color: edgeColors[e.type] || '#666',
-    }));
+    // Re-trigger visibility accessors
+    Graph
+      .nodeVisibility(n => n._visible)
+      .linkVisibility(l => l._visible && vis[l.type] !== false);
 
     // Update stats
-    document.getElementById('stat-nodes').textContent = filteredNodes.length;
-    document.getElementById('stat-edges').textContent = links.length;
-    const totalTxs = resolvedEdges.reduce((s,e) => s + e.count, 0);
+    document.getElementById('stat-nodes').textContent = visibleNodes;
+    document.getElementById('stat-edges').textContent = visibleEdges;
     document.getElementById('stat-txs').textContent = totalTxs.toLocaleString();
-    document.getElementById('stat-cross').textContent = filteredNodes.filter(n => n.isCross).length;
-
-    return { nodes: filteredNodes, links };
+    document.getElementById('stat-cross').textContent = filteredNodes.filter(n => n._visible && n.isCross).length;
   }
 
   // ═══════════════════════════════════════════════════
-  //  SMILEY CUBE RENDERER (unchanged)
+  //  SMILEY CUBE RENDERER
   // ═══════════════════════════════════════════════════
   const texCache = {};
   function makeSmileyTex(faceColor, glowColor, size) {
@@ -452,21 +471,21 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   }
 
   // ═══════════════════════════════════════════════════
-  //  INIT GRAPH
+  //  INIT GRAPH (once — never rebuilt)
   // ═══════════════════════════════════════════════════
-  const vis = { like: true, transfer: true, buy: true, mint: true, burn: true };
-  const initData = recompute();
   document.getElementById('loading').style.display = 'none';
 
   const Graph = ForceGraph3D()(document.getElementById('graph'))
     .backgroundColor('#0d1117')
-    .graphData(initData)
+    .graphData({ nodes: filteredNodes, links })
+    .nodeVisibility(n => n._visible !== false)
     .nodeThreeObject(n => {
       if (n.isPlatform) return smileyBox(n.size, n.color, '#00d4ff', false, n.name);
       const glow = n.role === 'Creator' ? '#00d4ff' : n.role === 'Fan' ? '#f0a030' : '#c0c0ff';
       return smileyBox(n.size, n.color, glow, n.isCross, n.name);
     })
     .nodeLabel('')
+    .linkVisibility(l => l._visible !== false && vis[l.type] !== false)
     .linkColor(l => {
       const op = Math.min(0.65, 0.12 + l.count / 120);
       const c = new THREE.Color(l.color);
@@ -487,13 +506,12 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
     })
     .linkDirectionalParticleWidth(l => l.type === 'mint' || l.type === 'burn' ? 2.5 : l.type === 'transfer' ? 2.0 : 1.5)
     .linkDirectionalParticleColor(l => l.color)
-    .linkVisibility(l => vis[l.type] !== false)
     .d3AlphaDecay(0.02)
     .d3VelocityDecay(0.3)
     .warmupTicks(80)
     .cooldownTicks(200);
 
-  // Renderer setup
+  // Renderer
   const renderer = Graph.renderer();
   renderer.toneMapping = THREE.NoToneMapping;
   if (renderer.outputColorSpace) renderer.outputColorSpace = 'srgb';
@@ -503,10 +521,9 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   function fixParticleMaterials() {
     scene.traverse(obj => {
       if (obj.isMesh && obj.geometry && !obj.__colorFixed) {
-        const geoType = obj.geometry.type || '';
-        if (geoType === 'SphereGeometry' || geoType === 'SphereBufferGeometry') {
-          const oldColor = obj.material.color ? obj.material.color.clone() : new THREE.Color(0xffffff);
-          obj.material = new THREE.MeshBasicMaterial({ color: oldColor });
+        const gt = obj.geometry.type || '';
+        if (gt === 'SphereGeometry' || gt === 'SphereBufferGeometry') {
+          obj.material = new THREE.MeshBasicMaterial({ color: obj.material.color ? obj.material.color.clone() : new THREE.Color(0xffffff) });
           obj.__colorFixed = true;
         }
       }
@@ -544,7 +561,7 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   ['like','transfer','buy','mint','burn'].forEach(t => {
     document.getElementById('toggle-'+t).addEventListener('change', function() {
       vis[t] = this.checked;
-      Graph.linkVisibility(l => vis[l.type] !== false);
+      Graph.linkVisibility(l => l._visible && vis[l.type] !== false);
     });
   });
 
@@ -558,10 +575,9 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   });
 
   // Spin animation
-  let currentNodes = initData.nodes;
   (function spinLoop() {
     requestAnimationFrame(spinLoop);
-    currentNodes.forEach(n => {
+    filteredNodes.forEach(n => {
       if (n.__threeObj && n.__threeObj.userData.spinX) {
         const mesh = n.__threeObj.children[0];
         if (mesh) {
@@ -569,13 +585,14 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
           mesh.rotation.y += n.__threeObj.userData.spinY;
         }
       }
-      // Cache positions for next recompute
-      if (n.x !== undefined) nodePositions[n.id] = { x: n.x, y: n.y, z: n.z };
     });
   })();
 
   // Camera
   setTimeout(() => Graph.cameraPosition({ x: 0, y: 120, z: 350 }, { x: 0, y: 0, z: 0 }, 2000), 500);
+
+  // Initial visibility
+  updateVisibility();
 
   // ═══════════════════════════════════════════════════
   //  TIMELINE CONTROLS
@@ -588,42 +605,29 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
 
   // Month labels
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  let d = new Date(DATE_START);
-  const endD = new Date(DATE_END);
-  while (d <= endD) {
-    const pct = (d.getTime() - DATE_START) / DATE_RANGE * 100;
+  let md = new Date(DATE_START);
+  while (md <= new Date(DATE_END)) {
+    const pct = (md.getTime() - DATE_START) / DATE_RANGE * 100;
     const span = document.createElement('span');
-    span.textContent = months[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2);
+    span.textContent = months[md.getMonth()] + ' ' + String(md.getFullYear()).slice(2);
     span.style.position = 'absolute';
     span.style.left = pct + '%';
     monthsEl.appendChild(span);
-    d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    md = new Date(md.getFullYear(), md.getMonth() + 1, 1);
   }
   monthsEl.style.position = 'fixed';
 
   function updateDateLabel() {
-    const d = new Date(currentDate);
-    dateLabel.textContent = d.toISOString().slice(0, 10);
+    dateLabel.textContent = new Date(currentDate).toISOString().slice(0, 10);
   }
-
-  function updateGraph() {
-    const data = recompute();
-    currentNodes = data.nodes;
-    Graph.graphData(data);
-    updateDateLabel();
-  }
-
-  // Set initial date label
   updateDateLabel();
 
-  // Slider input
   slider.addEventListener('input', () => {
-    const t = slider.value / 1000;
-    currentDate = DATE_START + t * DATE_RANGE;
-    updateGraph();
+    currentDate = DATE_START + (slider.value / 1000) * DATE_RANGE;
+    updateVisibility();
+    updateDateLabel();
   });
 
-  // Play/pause
   btnPlay.addEventListener('click', () => {
     playing = !playing;
     btnPlay.innerHTML = playing ? '&#10074;&#10074;' : '&#9654;';
@@ -633,38 +637,32 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
     }
   });
 
-  // Speed toggle
   speedLabel.addEventListener('click', () => {
     speedIdx = (speedIdx + 1) % speeds.length;
     speedLabel.textContent = speeds[speedIdx] + '×';
   });
 
-  // Playback loop
+  // Playback loop — smooth because we only toggle visibility, never rebuild graph
   let lastTime = 0;
-  let frameCount = 0;
-  function playbackLoop(ts) {
+  (function playbackLoop(ts) {
     requestAnimationFrame(playbackLoop);
     if (!playing) { lastTime = ts; return; }
 
-    const elapsed = Math.min((ts - lastTime) / 1000, 0.1);  // cap at 100ms
+    const elapsed = Math.min((ts - lastTime) / 1000, 0.1);
     lastTime = ts;
 
-    const daysPerSec = speeds[speedIdx] * 7;  // 1x = 7 days/sec
-    const advance = daysPerSec * elapsed * 86400000;
-    currentDate = Math.min(DATE_END, currentDate + advance);
+    const daysPerSec = speeds[speedIdx] * 7;
+    currentDate = Math.min(DATE_END, currentDate + daysPerSec * elapsed * 86400000);
     slider.value = ((currentDate - DATE_START) / DATE_RANGE) * 1000;
 
-    // Recompute every 4th frame for performance
-    frameCount++;
-    if (frameCount % 4 === 0) updateGraph();
-    else updateDateLabel();
+    updateVisibility();
+    updateDateLabel();
 
     if (currentDate >= DATE_END) {
       playing = false;
       btnPlay.innerHTML = '&#9654;';
     }
-  }
-  requestAnimationFrame(playbackLoop);
+  })(0);
 })();
 </script>
 </body>
