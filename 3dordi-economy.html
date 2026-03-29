@@ -361,48 +361,71 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   let currentDate = DATE_END;
   const vis = { like: true, transfer: true, buy: true, mint: true, burn: true };
 
-  function updateVisibility() {
+  // Track current visible set — only rebuild graph when it changes
+  let prevNodeKey = '';
+
+  function updateTimeline() {
     const cutoff = new Date(currentDate).toISOString().slice(0, 10);
 
-    // Update edge counts at current time
-    let visibleEdges = 0, visibleNodes = 0, totalTxs = 0;
+    // Determine which edges are active at this date
+    let totalTxs = 0;
+    const activeLinks = [];
     for (const l of links) {
-      if (l.first_seen_ms > currentDate) { l._visible = false; continue; }
+      if (l.first_seen_ms > currentDate) continue;
       if (l.snapCounts) {
         let count = 0;
         for (const snap of l.snapCounts) {
           if (snap.d <= cutoff) count = snap.c; else break;
         }
         l.count = count;
+        if (count <= 0) continue;
       }
-      l._visible = l.count > 0;
-      if (l._visible) { visibleEdges++; totalTxs += l.count; }
+      activeLinks.push(l);
+      totalTxs += l.count;
     }
 
+    // Determine which nodes should be visible
     const visibleAddrs = new Set();
-    for (const l of links) {
-      if (l._visible) {
+    visibleAddrs.add(PLATFORM_ID);
+    for (const l of activeLinks) {
+      visibleAddrs.add(typeof l.source === 'object' ? l.source.id : l.source);
+      visibleAddrs.add(typeof l.target === 'object' ? l.target.id : l.target);
+    }
+    const activeNodes = filteredNodes.filter(n => visibleAddrs.has(n.id));
+
+    // Only rebuild if the set of visible nodes changed
+    const nodeKey = activeNodes.map(n => n.id).sort().join(',');
+    if (nodeKey !== prevNodeKey) {
+      prevNodeKey = nodeKey;
+
+      // Preserve positions from existing simulation
+      const gd = Graph.graphData();
+      const posMap = {};
+      gd.nodes.forEach(n => { if (n.x !== undefined) posMap[n.id] = { x: n.x, y: n.y, z: n.z, vx: n.vx, vy: n.vy, vz: n.vz }; });
+
+      // Apply positions to active nodes; new nodes get no position (force sim places them)
+      activeNodes.forEach(n => {
+        const p = posMap[n.id];
+        if (p) { n.x = p.x; n.y = p.y; n.z = p.z; n.vx = p.vx; n.vy = p.vy; n.vz = p.vz; }
+        else { delete n.x; delete n.y; delete n.z; }
+      });
+
+      // Filter links to only those whose endpoints are both visible
+      const visLinks = activeLinks.filter(l => {
         const src = typeof l.source === 'object' ? l.source.id : l.source;
         const tgt = typeof l.target === 'object' ? l.target.id : l.target;
-        visibleAddrs.add(src); visibleAddrs.add(tgt);
-      }
-    }
-    visibleAddrs.add(PLATFORM_ID);
-    for (const n of filteredNodes) {
-      n._visible = visibleAddrs.has(n.id);
-      if (n._visible) visibleNodes++;
-    }
+        return visibleAddrs.has(src) && visibleAddrs.has(tgt);
+      });
 
-    // Re-trigger visibility accessors
-    Graph
-      .nodeVisibility(n => n._visible)
-      .linkVisibility(l => l._visible && vis[l.type] !== false);
+      // Rebuild graph — simulation reheats, new nodes ripple into place
+      Graph.graphData({ nodes: activeNodes, links: visLinks });
+    }
 
     // Update stats
-    document.getElementById('stat-nodes').textContent = visibleNodes;
-    document.getElementById('stat-edges').textContent = visibleEdges;
+    document.getElementById('stat-nodes').textContent = activeNodes.length;
+    document.getElementById('stat-edges').textContent = activeLinks.length;
     document.getElementById('stat-txs').textContent = totalTxs.toLocaleString();
-    document.getElementById('stat-cross').textContent = filteredNodes.filter(n => n._visible && n.isCross).length;
+    document.getElementById('stat-cross').textContent = activeNodes.filter(n => n.isCross).length;
   }
 
   // ═══════════════════════════════════════════════════
@@ -487,21 +510,20 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   }
 
   // ═══════════════════════════════════════════════════
-  //  INIT GRAPH (once — never rebuilt)
+  //  INIT GRAPH
   // ═══════════════════════════════════════════════════
   document.getElementById('loading').style.display = 'none';
 
   const Graph = ForceGraph3D()(document.getElementById('graph'))
     .backgroundColor('#0d1117')
     .graphData({ nodes: filteredNodes, links })
-    .nodeVisibility(n => n._visible !== false)
     .nodeThreeObject(n => {
       if (n.isPlatform) return smileyBox(n.size, n.color, '#00d4ff', false, n.name);
       const glow = n.role === 'Creator' ? '#00d4ff' : n.role === 'Fan' ? '#f0a030' : '#c0c0ff';
       return smileyBox(n.size, n.color, glow, n.isCross, n.name);
     })
     .nodeLabel('')
-    .linkVisibility(l => l._visible !== false && vis[l.type] !== false)
+    .linkVisibility(l => vis[l.type] !== false)
     .linkColor(l => {
       const op = Math.min(0.65, 0.12 + l.count / 120);
       const c = new THREE.Color(l.color);
@@ -522,10 +544,10 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
     })
     .linkDirectionalParticleWidth(l => l.type === 'mint' || l.type === 'burn' ? 2.5 : l.type === 'transfer' ? 2.0 : 1.5)
     .linkDirectionalParticleColor(l => l.color)
-    .d3AlphaDecay(0.02)
-    .d3VelocityDecay(0.3)
+    .d3AlphaDecay(0.015)
+    .d3VelocityDecay(0.35)
     .warmupTicks(80)
-    .cooldownTicks(200);
+    .cooldownTicks(300);
 
   // Renderer
   const renderer = Graph.renderer();
@@ -580,7 +602,8 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   // Spin animation
   (function spinLoop() {
     requestAnimationFrame(spinLoop);
-    filteredNodes.forEach(n => {
+    const gd = Graph.graphData();
+    gd.nodes.forEach(n => {
       if (n.__threeObj && n.__threeObj.userData.spinX) {
         const mesh = n.__threeObj.children[0];
         if (mesh) {
@@ -604,8 +627,8 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   // Camera
   setTimeout(() => Graph.cameraPosition({ x: 0, y: 120, z: 350 }, { x: 0, y: 0, z: 0 }, 2000), 500);
 
-  // Initial visibility
-  updateVisibility();
+  // Initial timeline state
+  updateTimeline();
 
   // ═══════════════════════════════════════════════════
   //  TIMELINE CONTROLS
@@ -637,7 +660,7 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
 
   slider.addEventListener('input', () => {
     currentDate = DATE_START + (slider.value / 1000) * DATE_RANGE;
-    updateVisibility();
+    updateTimeline();
     updateDateLabel();
   });
 
@@ -686,7 +709,7 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
     currentDate = Math.min(DATE_END, currentDate + daysPerSec * elapsed * 86400000);
     slider.value = ((currentDate - DATE_START) / DATE_RANGE) * 1000;
 
-    updateVisibility();
+    updateTimeline();
     updateDateLabel();
 
     if (currentDate >= DATE_END) {
