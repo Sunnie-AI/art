@@ -534,18 +534,7 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   const scene = Graph.scene();
   scene.add(new THREE.AmbientLight(0xffffff, 1.0));
 
-  // Continuously fix particle materials — the library recreates them on every visibility change
-  Graph.onEngineTick(() => {
-    scene.traverse(obj => {
-      if (obj.isMesh && obj.geometry && !obj.__colorFixed) {
-        const gt = obj.geometry.type || '';
-        if (gt === 'SphereGeometry' || gt === 'SphereBufferGeometry') {
-          obj.material = new THREE.MeshBasicMaterial({ color: obj.material.color ? obj.material.color.clone() : new THREE.Color(0xffffff) });
-          obj.__colorFixed = true;
-        }
-      }
-    });
-  });
+  // Particle material fix — runs in the spin loop (always active, unlike onEngineTick)
 
   // Tooltip
   const tip = document.getElementById('tooltip');
@@ -597,6 +586,16 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
         if (mesh) {
           mesh.rotation.x += n.__threeObj.userData.spinX;
           mesh.rotation.y += n.__threeObj.userData.spinY;
+        }
+      }
+    });
+    // Fix particle materials every frame — library recreates them on visibility changes
+    scene.traverse(obj => {
+      if (obj.isMesh && obj.geometry && !obj.__colorFixed) {
+        const gt = obj.geometry.type || '';
+        if (gt === 'SphereGeometry' || gt === 'SphereBufferGeometry') {
+          obj.material = new THREE.MeshBasicMaterial({ color: obj.material.color ? obj.material.color.clone() : new THREE.Color(0xffffff) });
+          obj.__colorFixed = true;
         }
       }
     });
