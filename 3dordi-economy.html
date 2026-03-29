@@ -534,7 +534,8 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   const scene = Graph.scene();
   scene.add(new THREE.AmbientLight(0xffffff, 1.0));
 
-  function fixParticleMaterials() {
+  // Continuously fix particle materials — the library recreates them on every visibility change
+  Graph.onEngineTick(() => {
     scene.traverse(obj => {
       if (obj.isMesh && obj.geometry && !obj.__colorFixed) {
         const gt = obj.geometry.type || '';
@@ -544,10 +545,7 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
         }
       }
     });
-  }
-  setTimeout(fixParticleMaterials, 2000);
-  setTimeout(fixParticleMaterials, 5000);
-  setTimeout(fixParticleMaterials, 10000);
+  });
 
   // Tooltip
   const tip = document.getElementById('tooltip');
