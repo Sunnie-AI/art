@@ -125,6 +125,7 @@
     <label><input type="checkbox" id="toggle-burn" checked> <span class="dot dot-burn"></span> Burns</label>
     <label><input type="checkbox" id="toggle-follow" checked> <span class="dot dot-follow"></span> Follows</label>
     <label><input type="checkbox" id="toggle-message" checked> <span class="dot dot-message"></span> Messages</label>
+    <div style="margin-top:6px"><a href="#" id="toggle-all" style="color:#00d4ff;font-size:11px;text-decoration:none;opacity:0.7">Select/Deselect All</a></div>
   </div>
   <hr class="divider">
   <div class="stat-row"><span>Nodes</span><span class="val" id="stat-nodes">-</span></div>
@@ -598,11 +599,23 @@ Ed.readability=function(e,t){var n=Ed(e),r=Ed(t);return(Math.max(n.getLuminance(
   });
 
   // Edge type toggles
-  ['like','transfer','buy','mint','burn','follow','message'].forEach(t => {
+  const edgeTypes = ['like','transfer','buy','mint','burn','follow','message'];
+  edgeTypes.forEach(t => {
     document.getElementById('toggle-'+t).addEventListener('change', function() {
       vis[t] = this.checked;
       Graph.linkVisibility(l => vis[l.type] !== false);
     });
+  });
+
+  // Select/Deselect All
+  document.getElementById('toggle-all').addEventListener('click', function(e) {
+    e.preventDefault();
+    const anyOn = edgeTypes.some(t => vis[t] !== false);
+    edgeTypes.forEach(t => {
+      vis[t] = !anyOn;
+      document.getElementById('toggle-'+t).checked = !anyOn;
+    });
+    Graph.linkVisibility(l => vis[l.type] !== false);
   });
 
   // Click to focus
