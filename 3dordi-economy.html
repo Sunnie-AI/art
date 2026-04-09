@@ -358,11 +358,17 @@ let DATA;
     const baked = (DATA.stats && DATA.stats.data_generated_at || '').slice(0, 10);
     __setStatus(`offline · baked ${baked}`, '#888');
   }
-  if (typeof startApp === 'function') {
-    startApp();
-  } else {
-    document.addEventListener('DOMContentLoaded', startApp);
-  }
+  // Wait for startApp() — poll, since the function is in a script tag that
+  // may not have parsed yet (libraries + app are huge inline blobs).
+  (function pollStartApp() {
+    if (typeof window.startApp === 'function') {
+      window.startApp();
+    } else if (typeof startApp === 'function') {
+      startApp();
+    } else {
+      setTimeout(pollStartApp, 30);
+    }
+  })();
 })();
 </script>
 
