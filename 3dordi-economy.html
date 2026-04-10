@@ -68,6 +68,15 @@
     flex-shrink: 0;
   }
   #btn-play:hover { background: rgba(0,212,255,0.15); }
+  #btn-music {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 1px solid rgba(0,212,255,0.4); background: rgba(13,17,23,0.8);
+    color: #8b949e; font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: color 0.2s;
+  }
+  #btn-music:hover { background: rgba(0,212,255,0.15); }
+  #btn-music.active { color: #00d4ff; }
   #timeline-slider {
     flex: 1; height: 6px; -webkit-appearance: none; appearance: none;
     background: rgba(0,212,255,0.15); border-radius: 3px; outline: none;
@@ -154,6 +163,8 @@
 
 <div id="timeline">
   <button id="btn-play" title="Play/Pause">&#9654;</button>
+  <button id="btn-music" title="Toggle Music">&#9835;</button>
+  <audio id="bgm" preload="none" loop src="https://sunnie.art/audio/Breath_of_the_Ledger.mp3"></audio>
   <span id="speed-label" title="Click to change speed">1×
     <div id="speed-picker"></div>
   </span>
@@ -520,13 +531,13 @@ function startApp() {
     const lVal = roleHSL[2] - 11 + intensity * 22;
     const sVal = Math.min(100, roleHSL[1] + intensity * 12);
     const color = `hsl(${roleHSL[0]}, ${sVal}%, ${lVal}%)`;
-    // Weighted activity: buys count more than likes (real economic action)
-    const weightedActions = (u.likes || 0) * 1
-                          + (u.buys || 0) * 4
-                          + (u.mints || 0) * 2
-                          + (u.burns || 0) * 2
-                          + (u.transfers || 0) * 3
-                          + (u.follows || 0) * 1
+    // Weighted activity (J1 sizing spec): buys×4, mints×3, follows×2, rest×1
+    const weightedActions = (u.buys || 0) * 4
+                          + (u.mints || 0) * 3
+                          + (u.follows || 0) * 2
+                          + (u.transfers || 0) * 1
+                          + (u.likes || 0) * 1
+                          + (u.burns || 0) * 1
                           + (u.messages || 0) * 1;
     const composite_total = Math.max(total, weightedActions);
     const size = Math.max(2, Math.min(13, Math.pow(composite_total, 0.34)));
@@ -1061,8 +1072,11 @@ function startApp() {
   const slider = document.getElementById('timeline-slider');
   const dateLabel = document.getElementById('timeline-date');
   const btnPlay = document.getElementById('btn-play');
+  const btnMusic = document.getElementById('btn-music');
+  const bgm = document.getElementById('bgm');
   const speedLabel = document.getElementById('speed-label');
   const monthsEl = document.getElementById('timeline-months');
+  let musicEnabled = false;
 
   // Month labels
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1096,6 +1110,17 @@ function startApp() {
       currentDate = DATE_START;
       slider.value = 0;
     }
+    if (musicEnabled) {
+      if (playing) bgm.play().catch(() => {});
+      else bgm.pause();
+    }
+  });
+
+  btnMusic.addEventListener('click', () => {
+    musicEnabled = !musicEnabled;
+    btnMusic.classList.toggle('active', musicEnabled);
+    if (musicEnabled && playing) bgm.play().catch(() => {});
+    else bgm.pause();
   });
 
   // Speed picker popup
@@ -1140,6 +1165,7 @@ function startApp() {
     if (currentDate >= DATE_END) {
       playing = false;
       btnPlay.innerHTML = '&#9654;';
+      if (musicEnabled) bgm.pause();
     }
   })(0);
 }
