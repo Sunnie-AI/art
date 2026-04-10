@@ -527,6 +527,26 @@ function startApp() {
     if (!nodeFirstSeen[e.to] || e.first_seen_ms < nodeFirstSeen[e.to]) nodeFirstSeen[e.to] = e.first_seen_ms;
   });
 
+  // Pre-pass: compute weighted scores to find max for normalization
+  const nodeScores = {};
+  let maxScore = 0;
+  graphAddrs.forEach(addr => {
+    const u = userMap[addr] || {};
+    const total = (inD[addr] || 0) + (outD[addr] || 0);
+    // Weighted activity (J1 sizing spec): buys×4, mints×3, follows×2, rest×1
+    const weightedActions = (u.buys || 0) * 4
+                          + (u.mints || 0) * 3
+                          + (u.follows || 0) * 2
+                          + (u.transfers || 0) * 1
+                          + (u.likes || 0) * 1
+                          + (u.burns || 0) * 1
+                          + (u.messages || 0) * 1;
+    const score = Math.max(total, weightedActions);
+    nodeScores[addr] = score;
+    if (score > maxScore) maxScore = score;
+  });
+
+  const MIN_SIZE = 1.5, MAX_SIZE = 22;
   const allNodes = [];
   let totalMints = 0, totalBurns = 0;
   graphAddrs.forEach(addr => {
@@ -545,16 +565,8 @@ function startApp() {
     const lVal = roleHSL[2] - 11 + intensity * 22;
     const sVal = Math.min(100, roleHSL[1] + intensity * 12);
     const color = `hsl(${roleHSL[0]}, ${sVal}%, ${lVal}%)`;
-    // Weighted activity (J1 sizing spec): buys×4, mints×3, follows×2, rest×1
-    const weightedActions = (u.buys || 0) * 4
-                          + (u.mints || 0) * 3
-                          + (u.follows || 0) * 2
-                          + (u.transfers || 0) * 1
-                          + (u.likes || 0) * 1
-                          + (u.burns || 0) * 1
-                          + (u.messages || 0) * 1;
-    const composite_total = Math.max(total, weightedActions);
-    const size = Math.max(2, Math.min(13, Math.pow(composite_total, 0.34)));
+    const normalized = maxScore > 0 ? nodeScores[addr] / maxScore : 0;
+    const size = MIN_SIZE + (MAX_SIZE - MIN_SIZE) * Math.pow(normalized, 0.6);
     const mints = u.mints || 0, burns = u.burns || 0;
     totalMints += mints; totalBurns += burns;
 
