@@ -176,7 +176,7 @@
 
 <div id="timeline">
   <button id="btn-play" title="Play/Pause">&#9654;</button>
-  <button id="btn-music" title="Toggle Music">&#9835;</button>
+  <button id="btn-music" class="active" title="Mute/Unmute">&#9835;</button>
   <input id="vol-slider" type="range" min="0" max="100" value="50" title="Volume">
   <audio id="bgm" preload="none" loop src="https://sunnie.art/audio/Breath_of_the_Ledger.mp3"></audio>
   <span id="speed-label" title="Click to change speed">1×
@@ -1091,7 +1091,7 @@ function startApp() {
   const volSlider = document.getElementById('vol-slider');
   const speedLabel = document.getElementById('speed-label');
   const monthsEl = document.getElementById('timeline-months');
-  let musicEnabled = false;
+  let muted = false;
   bgm.volume = 0.5;
 
   // Month labels
@@ -1119,6 +1119,11 @@ function startApp() {
     updateDateLabel();
   });
 
+  function syncMusic() {
+    if (playing && !muted) bgm.play().catch(() => {});
+    else bgm.pause();
+  }
+
   btnPlay.addEventListener('click', () => {
     playing = !playing;
     btnPlay.innerHTML = playing ? '&#10074;&#10074;' : '&#9654;';
@@ -1126,13 +1131,13 @@ function startApp() {
       currentDate = DATE_START;
       slider.value = 0;
     }
+    syncMusic();
   });
 
   btnMusic.addEventListener('click', () => {
-    musicEnabled = !musicEnabled;
-    btnMusic.classList.toggle('active', musicEnabled);
-    if (musicEnabled) bgm.play().catch(() => {});
-    else bgm.pause();
+    muted = !muted;
+    btnMusic.classList.toggle('active', !muted);
+    syncMusic();
   });
 
   volSlider.addEventListener('input', () => {
@@ -1181,6 +1186,7 @@ function startApp() {
     if (currentDate >= DATE_END) {
       playing = false;
       btnPlay.innerHTML = '&#9654;';
+      bgm.pause();
     }
   })(0);
 }
