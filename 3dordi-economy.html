@@ -77,6 +77,19 @@
   }
   #btn-music:hover { background: rgba(0,212,255,0.15); }
   #btn-music.active { color: #00d4ff; }
+  #vol-slider {
+    width: 60px; height: 4px; -webkit-appearance: none; appearance: none;
+    background: rgba(0,212,255,0.15); border-radius: 2px; outline: none;
+    cursor: pointer; flex-shrink: 0;
+  }
+  #vol-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+    background: #00d4ff; cursor: pointer;
+  }
+  #vol-slider::-moz-range-thumb {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #00d4ff; border: none; cursor: pointer;
+  }
   #timeline-slider {
     flex: 1; height: 6px; -webkit-appearance: none; appearance: none;
     background: rgba(0,212,255,0.15); border-radius: 3px; outline: none;
@@ -164,6 +177,7 @@
 <div id="timeline">
   <button id="btn-play" title="Play/Pause">&#9654;</button>
   <button id="btn-music" title="Toggle Music">&#9835;</button>
+  <input id="vol-slider" type="range" min="0" max="100" value="50" title="Volume">
   <audio id="bgm" preload="none" loop src="https://sunnie.art/audio/Breath_of_the_Ledger.mp3"></audio>
   <span id="speed-label" title="Click to change speed">1×
     <div id="speed-picker"></div>
@@ -1074,9 +1088,11 @@ function startApp() {
   const btnPlay = document.getElementById('btn-play');
   const btnMusic = document.getElementById('btn-music');
   const bgm = document.getElementById('bgm');
+  const volSlider = document.getElementById('vol-slider');
   const speedLabel = document.getElementById('speed-label');
   const monthsEl = document.getElementById('timeline-months');
   let musicEnabled = false;
+  bgm.volume = 0.5;
 
   // Month labels
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1110,17 +1126,17 @@ function startApp() {
       currentDate = DATE_START;
       slider.value = 0;
     }
-    if (musicEnabled) {
-      if (playing) bgm.play().catch(() => {});
-      else bgm.pause();
-    }
   });
 
   btnMusic.addEventListener('click', () => {
     musicEnabled = !musicEnabled;
     btnMusic.classList.toggle('active', musicEnabled);
-    if (musicEnabled && playing) bgm.play().catch(() => {});
+    if (musicEnabled) bgm.play().catch(() => {});
     else bgm.pause();
+  });
+
+  volSlider.addEventListener('input', () => {
+    bgm.volume = volSlider.value / 100;
   });
 
   // Speed picker popup
@@ -1165,7 +1181,6 @@ function startApp() {
     if (currentDate >= DATE_END) {
       playing = false;
       btnPlay.innerHTML = '&#9654;';
-      if (musicEnabled) bgm.pause();
     }
   })(0);
 }
